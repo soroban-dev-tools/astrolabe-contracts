@@ -2,7 +2,7 @@
   "network": "testnet",
   "networkPassphrase": "Test SDF Network ; September 2015",
   "deployedAt": "2026-09-13T16:20:00Z",
-  "commit": "PENDING",
+  "commit": "e2d06e6",
   "contracts": {
     "attestation": "CB2773G3PKQVSECFXTM2Q65W2XJLMWGQXC5UTFBQEPHYPAGUEXEYBMW4",
     "schema_registry": "CAYUJL5VPIVDBAGXAQ3FTOUJ4LICWV6IFKIMTRPAJB7ZS5FMRRI3M5EC"
