@@ -1,0 +1,17 @@
+{
+  "network": "testnet",
+  "networkPassphrase": "Test SDF Network ; September 2015",
+  "deployedAt": "2026-09-13T16:20:00Z",
+  "commit": "PENDING",
+  "contracts": {
+    "attestation": "CB2773G3PKQVSECFXTM2Q65W2XJLMWGQXC5UTFBQEPHYPAGUEXEYBMW4",
+    "schema_registry": "CAYUJL5VPIVDBAGXAQ3FTOUJ4LICWV6IFKIMTRPAJB7ZS5FMRRI3M5EC"
+  },
+  "seedSchemas": {
+    "verified_merchant": "38259953de66ebc6e6a1a68d43f31a4cbb709d3ae4ac7629a40b97dda6c1199d",
+    "verified_ngo": "8c1081d9ccfcf5ff5381ce345803bdbf1e6152cef62f2684c8cb4a2e2c34c436",
+    "kyc_tier": "42af1f6aecbbc1f4b0540b5057a36cce618f88ad7af2400834d3524ba1aaea4f",
+    "agent_job_completed": "c2dbe4b3b4becc50aaff473bfa4492af1a27bf5219e95d84b3380b7226732a1d",
+    "contributor_badge": "f69126dcb8244944b5198975623f6786b7bc0ea946a19013c3730db3c18d437e"
+  }
+}
