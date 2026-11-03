@@ -272,3 +272,27 @@ fn attest_publishes_event() {
     let soroban_sdk::xdr::ContractEventBody::V0(v0) = &event.body;
     assert_eq!(v0.topics.len(), 3);
 }
+
+#[test]
+fn revoke_publishes_event() {
+    let f = setup();
+    let schema_uid = register_schema(&f, true);
+
+    let uid = f.att.attest(
+        &f.issuer,
+        &schema_uid,
+        &f.subject,
+        &data(&f.env),
+        &None,
+        &None,
+    );
+
+    f.att.revoke(&f.issuer, &uid);
+
+    let events = f.env.events().all();
+    let contract_events = events.filter_by_contract(&f.att.address);
+    assert_eq!(contract_events.events().len(), 1);
+    let revoke_event = &contract_events.events()[0];
+    let soroban_sdk::xdr::ContractEventBody::V0(v0) = &revoke_event.body;
+    assert_eq!(v0.topics.len(), 3);
+}
