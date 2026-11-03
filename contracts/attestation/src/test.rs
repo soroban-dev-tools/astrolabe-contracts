@@ -18,7 +18,7 @@ use super::*;
 use astrolabe_schema_registry::{SchemaRegistry, SchemaRegistryClient};
 use soroban_sdk::{
     symbol_short,
-    testutils::{Address as _, Ledger as _},
+    testutils::{Address as _, Events as _, Ledger as _},
     Address, Bytes, Env, String,
 };
 
@@ -249,4 +249,26 @@ fn attest_without_auth_panics() {
     let subject = Address::generate(&env);
     let schema_uid = BytesN::from_array(&env, &[1u8; 32]);
     att.attest(&issuer, &schema_uid, &subject, &data(&env), &None, &None);
+}
+
+#[test]
+fn attest_publishes_event() {
+    let f = setup();
+    let schema_uid = register_schema(&f, true);
+
+    let _uid = f.att.attest(
+        &f.issuer,
+        &schema_uid,
+        &f.subject,
+        &data(&f.env),
+        &Some(5_000),
+        &None,
+    );
+
+    let events = f.env.events().all();
+    let contract_events = events.filter_by_contract(&f.att.address);
+    assert_eq!(contract_events.events().len(), 1);
+    let event = &contract_events.events()[0];
+    let soroban_sdk::xdr::ContractEventBody::V0(v0) = &event.body;
+    assert_eq!(v0.topics.len(), 3);
 }
