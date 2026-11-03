@@ -303,3 +303,11 @@ fn is_valid_returns_false_for_unknown_attestation() {
     let unknown = BytesN::from_array(&f.env, &[8u8; 32]);
     assert!(!f.att.is_valid(&unknown));
 }
+
+#[test]
+fn attestations_for_subject_empty_for_new_address() {
+    let f = setup();
+    let stranger = Address::generate(&f.env);
+    let list = f.att.attestations_for_subject(&stranger);
+    assert_eq!(list.len(), 0);
+}
