@@ -114,3 +114,21 @@ fn register_publishes_event() {
     let soroban_sdk::xdr::ContractEventBody::V0(v0) = &event.body;
     assert_eq!(v0.topics.len(), 3);
 }
+
+#[test]
+fn register_with_resolver_address() {
+    let (env, client, authority) = setup();
+    let resolver = Address::generate(&env);
+    let name = symbol_short!("reslv");
+    let definition = String::from_str(&env, "string id");
+
+    let uid = client.register_schema(
+        &authority,
+        &name,
+        &definition,
+        &true,
+        &Some(resolver.clone()),
+    );
+    let schema = client.get_schema(&uid).expect("schema exists");
+    assert_eq!(schema.resolver, Some(resolver));
+}
