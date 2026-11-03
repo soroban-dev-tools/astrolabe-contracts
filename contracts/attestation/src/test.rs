@@ -296,3 +296,10 @@ fn revoke_publishes_event() {
     let soroban_sdk::xdr::ContractEventBody::V0(v0) = &revoke_event.body;
     assert_eq!(v0.topics.len(), 3);
 }
+
+#[test]
+fn is_valid_returns_false_for_unknown_attestation() {
+    let f = setup();
+    let unknown = BytesN::from_array(&f.env, &[8u8; 32]);
+    assert!(!f.att.is_valid(&unknown));
+}
