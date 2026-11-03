@@ -311,3 +311,9 @@ fn attestations_for_subject_empty_for_new_address() {
     let list = f.att.attestations_for_subject(&stranger);
     assert_eq!(list.len(), 0);
 }
+
+#[test]
+fn registry_endpoint_returns_bound_schema_registry() {
+    let f = setup();
+    assert_eq!(f.att.registry(), f.registry.address);
+}
