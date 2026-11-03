@@ -317,3 +317,20 @@ fn registry_endpoint_returns_bound_schema_registry() {
     let f = setup();
     assert_eq!(f.att.registry(), f.registry.address);
 }
+
+#[test]
+fn schema_attestation_count_zero_for_unused_schema() {
+    let f = setup();
+    let schema_uid = register_schema(&f, true);
+    assert_eq!(f.att.schema_attestation_count(&schema_uid), 0);
+
+    f.att.attest(
+        &f.issuer,
+        &schema_uid,
+        &f.subject,
+        &data(&f.env),
+        &None,
+        &None,
+    );
+    assert_eq!(f.att.schema_attestation_count(&schema_uid), 1);
+}
