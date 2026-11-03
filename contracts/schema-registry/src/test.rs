@@ -15,7 +15,11 @@
 #![cfg(test)]
 
 use super::*;
-use soroban_sdk::{symbol_short, testutils::Address as _, Address, Env, String};
+use soroban_sdk::{
+    symbol_short,
+    testutils::{Address as _, Events as _},
+    Address, Env, String,
+};
 
 fn setup() -> (Env, SchemaRegistryClient<'static>, Address) {
     let env = Env::default();
@@ -94,4 +98,37 @@ fn definition_at_limit_accepted() {
 
     let uid = client.register_schema(&authority, &name, &definition, &true, &None);
     assert!(client.get_schema(&uid).is_some());
+}
+
+#[test]
+fn register_publishes_event() {
+    let (env, client, authority) = setup();
+    let name = symbol_short!("testevt");
+    let definition = String::from_str(&env, "string k");
+
+    let _uid = client.register_schema(&authority, &name, &definition, &true, &None);
+
+    let events = env.events().all();
+    assert_eq!(events.events().len(), 1);
+    let event = &events.events()[0];
+    let soroban_sdk::xdr::ContractEventBody::V0(v0) = &event.body;
+    assert_eq!(v0.topics.len(), 3);
+}
+
+#[test]
+fn register_with_resolver_address() {
+    let (env, client, authority) = setup();
+    let resolver = Address::generate(&env);
+    let name = symbol_short!("reslv");
+    let definition = String::from_str(&env, "string id");
+
+    let uid = client.register_schema(
+        &authority,
+        &name,
+        &definition,
+        &true,
+        &Some(resolver.clone()),
+    );
+    let schema = client.get_schema(&uid).expect("schema exists");
+    assert_eq!(schema.resolver, Some(resolver));
 }

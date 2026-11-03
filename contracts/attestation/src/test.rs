@@ -18,7 +18,7 @@ use super::*;
 use astrolabe_schema_registry::{SchemaRegistry, SchemaRegistryClient};
 use soroban_sdk::{
     symbol_short,
-    testutils::{Address as _, Ledger as _},
+    testutils::{Address as _, Events as _, Ledger as _},
     Address, Bytes, Env, String,
 };
 
@@ -249,4 +249,88 @@ fn attest_without_auth_panics() {
     let subject = Address::generate(&env);
     let schema_uid = BytesN::from_array(&env, &[1u8; 32]);
     att.attest(&issuer, &schema_uid, &subject, &data(&env), &None, &None);
+}
+
+#[test]
+fn attest_publishes_event() {
+    let f = setup();
+    let schema_uid = register_schema(&f, true);
+
+    let _uid = f.att.attest(
+        &f.issuer,
+        &schema_uid,
+        &f.subject,
+        &data(&f.env),
+        &Some(5_000),
+        &None,
+    );
+
+    let events = f.env.events().all();
+    let contract_events = events.filter_by_contract(&f.att.address);
+    assert_eq!(contract_events.events().len(), 1);
+    let event = &contract_events.events()[0];
+    let soroban_sdk::xdr::ContractEventBody::V0(v0) = &event.body;
+    assert_eq!(v0.topics.len(), 3);
+}
+
+#[test]
+fn revoke_publishes_event() {
+    let f = setup();
+    let schema_uid = register_schema(&f, true);
+
+    let uid = f.att.attest(
+        &f.issuer,
+        &schema_uid,
+        &f.subject,
+        &data(&f.env),
+        &None,
+        &None,
+    );
+
+    f.att.revoke(&f.issuer, &uid);
+
+    let events = f.env.events().all();
+    let contract_events = events.filter_by_contract(&f.att.address);
+    assert_eq!(contract_events.events().len(), 1);
+    let revoke_event = &contract_events.events()[0];
+    let soroban_sdk::xdr::ContractEventBody::V0(v0) = &revoke_event.body;
+    assert_eq!(v0.topics.len(), 3);
+}
+
+#[test]
+fn is_valid_returns_false_for_unknown_attestation() {
+    let f = setup();
+    let unknown = BytesN::from_array(&f.env, &[8u8; 32]);
+    assert!(!f.att.is_valid(&unknown));
+}
+
+#[test]
+fn attestations_for_subject_empty_for_new_address() {
+    let f = setup();
+    let stranger = Address::generate(&f.env);
+    let list = f.att.attestations_for_subject(&stranger);
+    assert_eq!(list.len(), 0);
+}
+
+#[test]
+fn registry_endpoint_returns_bound_schema_registry() {
+    let f = setup();
+    assert_eq!(f.att.registry(), f.registry.address);
+}
+
+#[test]
+fn schema_attestation_count_zero_for_unused_schema() {
+    let f = setup();
+    let schema_uid = register_schema(&f, true);
+    assert_eq!(f.att.schema_attestation_count(&schema_uid), 0);
+
+    f.att.attest(
+        &f.issuer,
+        &schema_uid,
+        &f.subject,
+        &data(&f.env),
+        &None,
+        &None,
+    );
+    assert_eq!(f.att.schema_attestation_count(&schema_uid), 1);
 }
