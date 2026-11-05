@@ -73,9 +73,9 @@ pub struct SchemaRegistered {
 /// Derive the schema uid: `sha256(xdr(name) || xdr(definition) || xdr(authority))`.
 fn derive_uid(env: &Env, name: &Symbol, definition: &String, authority: &Address) -> BytesN<32> {
     let mut buf = Bytes::new(env);
-    buf.append(&name.clone().to_xdr(env));
-    buf.append(&definition.clone().to_xdr(env));
-    buf.append(&authority.clone().to_xdr(env));
+    buf.append(&name.to_xdr(env));
+    buf.append(&definition.to_xdr(env));
+    buf.append(&authority.to_xdr(env));
     env.crypto().sha256(&buf).to_bytes()
 }
 
