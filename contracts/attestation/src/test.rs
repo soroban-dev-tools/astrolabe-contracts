@@ -372,3 +372,27 @@ fn get_unknown_returns_none() {
     let unknown = BytesN::from_array(&f.env, &[4u8; 32]);
     assert_eq!(f.att.get_attestation(&unknown), None);
 }
+
+#[test]
+fn revoke_expired_attestation_succeeds() {
+    let f = setup();
+    f.env.ledger().with_mut(|l| l.timestamp = 1_000);
+    let schema_uid = register_schema(&f, true);
+
+    let uid = f.att.attest(
+        &f.issuer,
+        &schema_uid,
+        &f.subject,
+        &data(&f.env),
+        &Some(2_000),
+        &None,
+    );
+
+    f.env.ledger().with_mut(|l| l.timestamp = 2_500);
+    assert!(!f.att.is_valid(&uid));
+
+    f.att.revoke(&f.issuer, &uid);
+    let a = f.att.get_attestation(&uid).expect("exists");
+    assert!(a.revoked);
+    assert_eq!(a.revocation_time, Some(2_500));
+}
