@@ -365,3 +365,10 @@ fn attest_with_reference_uid_succeeds() {
     let a = f.att.get_attestation(&second_uid).expect("exists");
     assert_eq!(a.ref_uid, Some(first_uid));
 }
+
+#[test]
+fn get_unknown_returns_none() {
+    let f = setup();
+    let unknown = BytesN::from_array(&f.env, &[4u8; 32]);
+    assert_eq!(f.att.get_attestation(&unknown), None);
+}
