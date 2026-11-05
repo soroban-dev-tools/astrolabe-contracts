@@ -338,3 +338,30 @@ fn schema_attestation_count_zero_for_unused_schema() {
     );
     assert_eq!(f.att.schema_attestation_count(&schema_uid), 1);
 }
+
+#[test]
+fn attest_with_reference_uid_succeeds() {
+    let f = setup();
+    let schema_uid = register_schema(&f, true);
+
+    let first_uid = f.att.attest(
+        &f.issuer,
+        &schema_uid,
+        &f.subject,
+        &data(&f.env),
+        &None,
+        &None,
+    );
+
+    let second_uid = f.att.attest(
+        &f.issuer,
+        &schema_uid,
+        &f.subject,
+        &data(&f.env),
+        &None,
+        &Some(first_uid.clone()),
+    );
+
+    let a = f.att.get_attestation(&second_uid).expect("exists");
+    assert_eq!(a.ref_uid, Some(first_uid));
+}
