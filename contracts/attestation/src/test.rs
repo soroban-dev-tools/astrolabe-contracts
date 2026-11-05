@@ -219,7 +219,8 @@ fn subject_index_updates_and_caps() {
     let total = MAX_SUBJECT_INDEX + 5;
     let mut first_uid: Option<BytesN<32>> = None;
     for i in 0..total {
-        let d = Bytes::from_array(&f.env, &[(i % 256) as u8]);
+        let byte_val = u8::try_from(i % 256).unwrap();
+        let d = Bytes::from_array(&f.env, &[byte_val]);
         let uid = f
             .att
             .attest(&f.issuer, &schema_uid, &f.subject, &d, &None, &None);
@@ -233,11 +234,14 @@ fn subject_index_updates_and_caps() {
     // The oldest uid was evicted from the index.
     assert!(!index.contains(first_uid.unwrap()));
     // But its record still exists in storage.
-    assert_eq!(f.att.schema_attestation_count(&schema_uid), total as u64);
+    assert_eq!(
+        f.att.schema_attestation_count(&schema_uid),
+        u64::from(total)
+    );
 }
 
 #[test]
-#[should_panic]
+#[should_panic(expected = "Error(Auth, InvalidAction)")]
 fn attest_without_auth_panics() {
     // No mock_all_auths here: require_auth must reject.
     let env = Env::default();
