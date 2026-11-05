@@ -86,8 +86,10 @@ pub struct SchemaRegistry;
 impl SchemaRegistry {
     /// Register an immutable schema. Returns the schema uid.
     ///
-    /// Fails with `DefinitionTooLong` if the definition exceeds the byte limit,
-    /// or `SchemaAlreadyExists` if the derived uid is already registered.
+    /// # Errors
+    ///
+    /// - Returns `Error::DefinitionTooLong` if `definition` exceeds `MAX_DEFINITION_LEN` (512 bytes).
+    /// - Returns `Error::SchemaAlreadyExists` if the derived schema uid is already registered.
     pub fn register_schema(
         env: Env,
         authority: Address,
