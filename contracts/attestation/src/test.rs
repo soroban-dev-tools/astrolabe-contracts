@@ -219,7 +219,8 @@ fn subject_index_updates_and_caps() {
     let total = MAX_SUBJECT_INDEX + 5;
     let mut first_uid: Option<BytesN<32>> = None;
     for i in 0..total {
-        let d = Bytes::from_array(&f.env, &[(i % 256) as u8]);
+        let byte_val = u8::try_from(i % 256).unwrap();
+        let d = Bytes::from_array(&f.env, &[byte_val]);
         let uid = f
             .att
             .attest(&f.issuer, &schema_uid, &f.subject, &d, &None, &None);
@@ -233,11 +234,14 @@ fn subject_index_updates_and_caps() {
     // The oldest uid was evicted from the index.
     assert!(!index.contains(first_uid.unwrap()));
     // But its record still exists in storage.
-    assert_eq!(f.att.schema_attestation_count(&schema_uid), total as u64);
+    assert_eq!(
+        f.att.schema_attestation_count(&schema_uid),
+        u64::from(total)
+    );
 }
 
 #[test]
-#[should_panic]
+#[should_panic(expected = "Error(Auth, InvalidAction)")]
 fn attest_without_auth_panics() {
     // No mock_all_auths here: require_auth must reject.
     let env = Env::default();
@@ -333,4 +337,62 @@ fn schema_attestation_count_zero_for_unused_schema() {
         &None,
     );
     assert_eq!(f.att.schema_attestation_count(&schema_uid), 1);
+}
+
+#[test]
+fn attest_with_reference_uid_succeeds() {
+    let f = setup();
+    let schema_uid = register_schema(&f, true);
+
+    let first_uid = f.att.attest(
+        &f.issuer,
+        &schema_uid,
+        &f.subject,
+        &data(&f.env),
+        &None,
+        &None,
+    );
+
+    let second_uid = f.att.attest(
+        &f.issuer,
+        &schema_uid,
+        &f.subject,
+        &data(&f.env),
+        &None,
+        &Some(first_uid.clone()),
+    );
+
+    let a = f.att.get_attestation(&second_uid).expect("exists");
+    assert_eq!(a.ref_uid, Some(first_uid));
+}
+
+#[test]
+fn get_unknown_returns_none() {
+    let f = setup();
+    let unknown = BytesN::from_array(&f.env, &[4u8; 32]);
+    assert_eq!(f.att.get_attestation(&unknown), None);
+}
+
+#[test]
+fn revoke_expired_attestation_succeeds() {
+    let f = setup();
+    f.env.ledger().with_mut(|l| l.timestamp = 1_000);
+    let schema_uid = register_schema(&f, true);
+
+    let uid = f.att.attest(
+        &f.issuer,
+        &schema_uid,
+        &f.subject,
+        &data(&f.env),
+        &Some(2_000),
+        &None,
+    );
+
+    f.env.ledger().with_mut(|l| l.timestamp = 2_500);
+    assert!(!f.att.is_valid(&uid));
+
+    f.att.revoke(&f.issuer, &uid);
+    let a = f.att.get_attestation(&uid).expect("exists");
+    assert!(a.revoked);
+    assert_eq!(a.revocation_time, Some(2_500));
 }

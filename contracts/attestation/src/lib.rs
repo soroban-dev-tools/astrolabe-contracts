@@ -127,12 +127,12 @@ fn derive_uid(
     nonce: u64,
 ) -> BytesN<32> {
     let mut buf = Bytes::new(env);
-    buf.append(&schema_uid.clone().to_xdr(env));
-    buf.append(&issuer.clone().to_xdr(env));
-    buf.append(&subject.clone().to_xdr(env));
-    buf.append(&data.clone().to_xdr(env));
-    buf.append(&(*expiration).to_xdr(env));
-    buf.append(&ref_uid.clone().to_xdr(env));
+    buf.append(&schema_uid.to_xdr(env));
+    buf.append(&issuer.to_xdr(env));
+    buf.append(&subject.to_xdr(env));
+    buf.append(&data.to_xdr(env));
+    buf.append(&expiration.to_xdr(env));
+    buf.append(&ref_uid.to_xdr(env));
     buf.append(&nonce.to_xdr(env));
     env.crypto().sha256(&buf).to_bytes()
 }
@@ -158,6 +158,12 @@ impl AttestationContract {
     }
 
     /// Create an attestation under an existing schema. Returns the attestation uid.
+    ///
+    /// # Errors
+    ///
+    /// - Returns `Error::DataTooLong` if `data` exceeds `MAX_DATA_LEN` (1024 bytes).
+    /// - Returns `Error::SchemaNotFound` if `schema_uid` does not exist in the registry.
+    /// - Returns `Error::NotInitialized` if the registry contract address is not set.
     pub fn attest(
         env: Env,
         issuer: Address,
@@ -232,6 +238,15 @@ impl AttestationContract {
 
     /// Revoke an attestation. Only the original issuer may revoke, and only if the
     /// schema is revocable and the attestation is not already revoked.
+    ///
+    /// # Errors
+    ///
+    /// - Returns `Error::AttestationNotFound` if `attestation_uid` does not exist.
+    /// - Returns `Error::NotAuthorizedToRevoke` if caller is not the attestation's issuer.
+    /// - Returns `Error::AlreadyRevoked` if the attestation is already revoked.
+    /// - Returns `Error::SchemaNotFound` if the referenced schema cannot be found.
+    /// - Returns `Error::SchemaNotRevocable` if the schema does not permit revocation.
+    /// - Returns `Error::NotInitialized` if the registry contract address is not set.
     pub fn revoke(env: Env, issuer: Address, attestation_uid: BytesN<32>) -> Result<(), Error> {
         issuer.require_auth();
 
@@ -298,11 +313,12 @@ impl AttestationContract {
                     .persistent()
                     .extend_ttl(&key, TTL_THRESHOLD, TTL_EXTEND);
                 if a.revoked {
-                    return false;
-                }
-                match a.expiration {
-                    None => true,
-                    Some(exp) => exp > env.ledger().timestamp(),
+                    false
+                } else {
+                    match a.expiration {
+                        None => true,
+                        Some(exp) => exp > env.ledger().timestamp(),
+                    }
                 }
             }
         }
@@ -333,6 +349,10 @@ impl AttestationContract {
     }
 
     /// The bound schema registry contract id.
+    ///
+    /// # Errors
+    ///
+    /// Returns `Error::NotInitialized` if the registry contract address is not set.
     pub fn registry(env: Env) -> Result<Address, Error> {
         registry_id(&env)
     }

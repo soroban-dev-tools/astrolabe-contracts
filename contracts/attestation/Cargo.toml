@@ -11,6 +11,9 @@ description = "Astrolabe attestation registry contract for Soroban"
 crate-type = ["cdylib", "rlib"]
 doctest = false
 
+[features]
+testutils = ["soroban-sdk/testutils"]
+
 [dependencies]
 soroban-sdk = { workspace = true }
 
