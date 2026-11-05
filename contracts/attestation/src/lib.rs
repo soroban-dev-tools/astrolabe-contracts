@@ -298,11 +298,12 @@ impl AttestationContract {
                     .persistent()
                     .extend_ttl(&key, TTL_THRESHOLD, TTL_EXTEND);
                 if a.revoked {
-                    return false;
-                }
-                match a.expiration {
-                    None => true,
-                    Some(exp) => exp > env.ledger().timestamp(),
+                    false
+                } else {
+                    match a.expiration {
+                        None => true,
+                        Some(exp) => exp > env.ledger().timestamp(),
+                    }
                 }
             }
         }
