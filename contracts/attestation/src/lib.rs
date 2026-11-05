@@ -127,12 +127,12 @@ fn derive_uid(
     nonce: u64,
 ) -> BytesN<32> {
     let mut buf = Bytes::new(env);
-    buf.append(&schema_uid.clone().to_xdr(env));
-    buf.append(&issuer.clone().to_xdr(env));
-    buf.append(&subject.clone().to_xdr(env));
-    buf.append(&data.clone().to_xdr(env));
-    buf.append(&(*expiration).to_xdr(env));
-    buf.append(&ref_uid.clone().to_xdr(env));
+    buf.append(&schema_uid.to_xdr(env));
+    buf.append(&issuer.to_xdr(env));
+    buf.append(&subject.to_xdr(env));
+    buf.append(&data.to_xdr(env));
+    buf.append(&expiration.to_xdr(env));
+    buf.append(&ref_uid.to_xdr(env));
     buf.append(&nonce.to_xdr(env));
     env.crypto().sha256(&buf).to_bytes()
 }
