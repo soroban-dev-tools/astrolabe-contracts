@@ -662,3 +662,40 @@ fn characterisation_multi_subject_index_and_issuer_nonces() {
     assert!(index_b.contains(uid_b1));
     assert!(index_b.contains(uid_b2));
 }
+
+#[test]
+fn attest_expiration_in_past_and_present_rejected() {
+    let f = setup();
+    f.env.ledger().with_mut(|l| l.timestamp = 2_000);
+    let schema_uid = register_schema(&f, true);
+
+    let res_past = f.att.try_attest(
+        &f.issuer,
+        &schema_uid,
+        &f.subject,
+        &data(&f.env),
+        &Some(1_999),
+        &None,
+    );
+    assert_eq!(res_past, Err(Ok(Error::ExpirationInPast)));
+
+    let res_now = f.att.try_attest(
+        &f.issuer,
+        &schema_uid,
+        &f.subject,
+        &data(&f.env),
+        &Some(2_000),
+        &None,
+    );
+    assert_eq!(res_now, Err(Ok(Error::ExpirationInPast)));
+
+    let res_future = f.att.try_attest(
+        &f.issuer,
+        &schema_uid,
+        &f.subject,
+        &data(&f.env),
+        &Some(2_001),
+        &None,
+    );
+    assert!(res_future.is_ok());
+}
