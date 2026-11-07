@@ -410,3 +410,20 @@ fn attestation_uid_determinism_identical_inputs() {
 
     assert_eq!(uid1, uid2);
 }
+
+#[test]
+fn attestation_uid_sensitivity_schema_and_subject() {
+    let f = setup();
+    let schema_uid1 = BytesN::from_array(&f.env, &[2u8; 32]);
+    let schema_uid2 = BytesN::from_array(&f.env, &[7u8; 32]);
+    let subject2 = Address::generate(&f.env);
+    let d = data(&f.env);
+
+    let base_uid = derive_uid(&f.env, &schema_uid1, &f.issuer, &f.subject, &d, &None, &None, 0);
+
+    let diff_schema = derive_uid(&f.env, &schema_uid2, &f.issuer, &f.subject, &d, &None, &None, 0);
+    assert_ne!(base_uid, diff_schema);
+
+    let diff_subject = derive_uid(&f.env, &schema_uid1, &f.issuer, &subject2, &d, &None, &None, 0);
+    assert_ne!(base_uid, diff_subject);
+}
