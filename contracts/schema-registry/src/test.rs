@@ -183,3 +183,24 @@ fn schema_uid_sensitivity_authority_change() {
 
     assert_ne!(uid1, uid2);
 }
+
+#[test]
+fn schema_uid_regression_golden_value() {
+    let env = Env::default();
+    let authority = Address::from_str(
+        &env,
+        "CAYUJL5VPIVDBAGXAQ3FTOUJ4LICWV6IFKIMTRPAJB7ZS5FMRRI3M5EC",
+    );
+    let name = symbol_short!("kyc_tier");
+    let definition = String::from_str(&env, "u32 tier");
+
+    let uid = derive_uid(&env, &name, &definition, &authority);
+    let expected = BytesN::from_array(
+        &env,
+        &[
+            138, 62, 209, 75, 102, 79, 172, 7, 113, 40, 66, 48, 77, 154, 195, 26, 231, 81, 238, 30,
+            50, 197, 55, 238, 185, 10, 236, 21, 76, 10, 87, 3,
+        ],
+    );
+    assert_eq!(uid, expected);
+}
