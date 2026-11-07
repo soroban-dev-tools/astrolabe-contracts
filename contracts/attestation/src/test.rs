@@ -609,3 +609,36 @@ fn attestation_uid_regression_golden_value() {
     );
     assert_eq!(uid, expected);
 }
+
+#[test]
+fn characterisation_multi_subject_index_and_issuer_nonces() {
+    let f = setup();
+    let schema_uid = register_schema(&f, true);
+    let subject_b = Address::generate(&f.env);
+    let issuer_b = Address::generate(&f.env);
+
+    let uid_a1 = f
+        .att
+        .attest(&f.issuer, &schema_uid, &f.subject, &data(&f.env), &None, &None);
+    let uid_a2 = f
+        .att
+        .attest(&f.issuer, &schema_uid, &f.subject, &data(&f.env), &None, &None);
+    assert_ne!(uid_a1, uid_a2);
+
+    let uid_b1 = f
+        .att
+        .attest(&f.issuer, &schema_uid, &subject_b, &data(&f.env), &None, &None);
+    let uid_b2 = f
+        .att
+        .attest(&issuer_b, &schema_uid, &subject_b, &data(&f.env), &None, &None);
+    assert_ne!(uid_b1, uid_b2);
+
+    let index_a = f.att.attestations_for_subject(&f.subject);
+    let index_b = f.att.attestations_for_subject(&subject_b);
+    assert_eq!(index_a.len(), 2);
+    assert_eq!(index_b.len(), 2);
+    assert!(index_a.contains(uid_a1));
+    assert!(index_a.contains(uid_a2));
+    assert!(index_b.contains(uid_b1));
+    assert!(index_b.contains(uid_b2));
+}
