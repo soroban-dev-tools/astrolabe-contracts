@@ -157,3 +157,16 @@ fn schema_uid_sensitivity_name_change() {
 
     assert_ne!(uid1, uid2);
 }
+
+#[test]
+fn schema_uid_sensitivity_definition_change() {
+    let (env, _, authority) = setup();
+    let name = symbol_short!("sch_def");
+    let def1 = String::from_str(&env, "string title");
+    let def2 = String::from_str(&env, "string summary");
+
+    let uid1 = derive_uid(&env, &name, &def1, &authority);
+    let uid2 = derive_uid(&env, &name, &def2, &authority);
+
+    assert_ne!(uid1, uid2);
+}
