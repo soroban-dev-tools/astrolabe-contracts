@@ -427,3 +427,58 @@ fn attestation_uid_sensitivity_schema_and_subject() {
     let diff_subject = derive_uid(&f.env, &schema_uid1, &f.issuer, &subject2, &d, &None, &None, 0);
     assert_ne!(base_uid, diff_subject);
 }
+
+#[test]
+fn attestation_uid_sensitivity_data_and_expiration() {
+    let f = setup();
+    let schema_uid = BytesN::from_array(&f.env, &[2u8; 32]);
+    let d1 = Bytes::from_array(&f.env, &[1, 2, 3]);
+    let d2 = Bytes::from_array(&f.env, &[1, 2, 4]);
+
+    let base_uid = derive_uid(
+        &f.env,
+        &schema_uid,
+        &f.issuer,
+        &f.subject,
+        &d1,
+        &Some(1_000),
+        &None,
+        0,
+    );
+
+    let diff_data = derive_uid(
+        &f.env,
+        &schema_uid,
+        &f.issuer,
+        &f.subject,
+        &d2,
+        &Some(1_000),
+        &None,
+        0,
+    );
+    assert_ne!(base_uid, diff_data);
+
+    let diff_exp = derive_uid(
+        &f.env,
+        &schema_uid,
+        &f.issuer,
+        &f.subject,
+        &d1,
+        &Some(2_000),
+        &None,
+        0,
+    );
+    assert_ne!(base_uid, diff_exp);
+
+    let none_exp = derive_uid(
+        &f.env,
+        &schema_uid,
+        &f.issuer,
+        &f.subject,
+        &d1,
+        &None,
+        &None,
+        0,
+    );
+    assert_ne!(base_uid, none_exp);
+}
