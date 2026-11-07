@@ -252,6 +252,98 @@ impl AttestationContract {
         Ok(uid)
     }
 
+    /// Create multiple attestations atomically under one issuer authorization.
+    ///
+    /// Shares the per-issuer nonce sequence, advancing by `inputs.len()`.
+    /// Has all-or-nothing semantics: if any entry fails validation, the entire batch reverts.
+    ///
+    /// # Errors
+    ///
+    /// - Returns `Error::DataTooLong` if any entry's `data` exceeds `MAX_DATA_LEN` (1024 bytes).
+    /// - Returns `Error::SchemaNotFound` if any entry's `schema_uid` does not exist.
+    /// - Returns `Error::NotInitialized` if the registry contract address is not set.
+    /// - Returns `Error::ExpirationInPast` if any entry's `expiration` is <= current ledger time.
+    /// - Returns `Error::RefNotFound` if any entry's `ref_uid` does not exist.
+    pub fn attest_batch(
+        env: Env,
+        issuer: Address,
+        inputs: Vec<AttestInput>,
+    ) -> Result<Vec<BytesN<32>>, Error> {
+        issuer.require_auth();
+
+        if inputs.is_empty() {
+            return Ok(Vec::new(&env));
+        }
+
+        let now = env.ledger().timestamp();
+
+        for input in inputs.iter() {
+            if input.data.len() > MAX_DATA_LEN {
+                return Err(Error::DataTooLong);
+            }
+            if let Some(exp) = input.expiration {
+                if exp <= now {
+                    return Err(Error::ExpirationInPast);
+                }
+            }
+            if Self::lookup_schema(&env, &input.schema_uid)?.is_none() {
+                return Err(Error::SchemaNotFound);
+            }
+            if let Some(ref r) = input.ref_uid {
+                if !env.storage().persistent().has(&DataKey::Attestation(r.clone())) {
+                    return Err(Error::RefNotFound);
+                }
+            }
+        }
+
+        let count = u64::from(inputs.len());
+        let starting_nonce = Self::read_and_advance_nonce(&env, &issuer, count);
+        let mut uids = Vec::new(&env);
+
+        for (i, input) in inputs.iter().enumerate() {
+            let nonce = starting_nonce + (i as u64);
+            let uid = derive_uid(
+                &env,
+                &input.schema_uid,
+                &issuer,
+                &input.subject,
+                &input.data,
+                &input.expiration,
+                &input.ref_uid,
+                nonce,
+            );
+
+            let attestation = Attestation {
+                schema_uid: input.schema_uid.clone(),
+                issuer: issuer.clone(),
+                subject: input.subject.clone(),
+                data: input.data,
+                expiration: input.expiration,
+                ref_uid: input.ref_uid,
+                revoked: false,
+                revocation_time: None,
+                created_at: now,
+            };
+
+            Self::write_attestation(&env, &uid, &attestation);
+            Self::push_subject_index(&env, &input.subject, &uid);
+            Self::increment_schema_count(&env, &input.schema_uid, 1);
+
+            Attested {
+                schema_uid: input.schema_uid,
+                attestation_uid: uid.clone(),
+                issuer: issuer.clone(),
+                subject: input.subject,
+                expiration: input.expiration,
+            }
+            .publish(&env);
+
+            uids.push_back(uid);
+        }
+
+        Ok(uids)
+    }
+
     /// Revoke an attestation. Only the original issuer may revoke, and only if the
     /// schema is revocable and the attestation is not already revoked.
     ///
