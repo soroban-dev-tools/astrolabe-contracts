@@ -482,3 +482,59 @@ fn attestation_uid_sensitivity_data_and_expiration() {
     );
     assert_ne!(base_uid, none_exp);
 }
+
+#[test]
+fn attestation_uid_sensitivity_ref_and_nonce() {
+    let f = setup();
+    let schema_uid = BytesN::from_array(&f.env, &[2u8; 32]);
+    let ref1 = BytesN::from_array(&f.env, &[10u8; 32]);
+    let ref2 = BytesN::from_array(&f.env, &[11u8; 32]);
+    let d = data(&f.env);
+
+    let base_uid = derive_uid(
+        &f.env,
+        &schema_uid,
+        &f.issuer,
+        &f.subject,
+        &d,
+        &None,
+        &Some(ref1.clone()),
+        0,
+    );
+
+    let diff_ref = derive_uid(
+        &f.env,
+        &schema_uid,
+        &f.issuer,
+        &f.subject,
+        &d,
+        &None,
+        &Some(ref2),
+        0,
+    );
+    assert_ne!(base_uid, diff_ref);
+
+    let none_ref = derive_uid(
+        &f.env,
+        &schema_uid,
+        &f.issuer,
+        &f.subject,
+        &d,
+        &None,
+        &None,
+        0,
+    );
+    assert_ne!(base_uid, none_ref);
+
+    let diff_nonce = derive_uid(
+        &f.env,
+        &schema_uid,
+        &f.issuer,
+        &f.subject,
+        &d,
+        &None,
+        &Some(ref1),
+        1,
+    );
+    assert_ne!(base_uid, diff_nonce);
+}
