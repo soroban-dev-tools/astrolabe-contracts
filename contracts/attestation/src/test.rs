@@ -778,3 +778,50 @@ fn attest_batch_valid_entries_advance_nonces() {
     );
     assert!(!uids.contains(single_uid));
 }
+
+#[test]
+fn attest_batch_mixed_invalid_reverts_entire_batch() {
+    let f = setup();
+    f.env.ledger().with_mut(|l| l.timestamp = 2_000);
+    let schema_uid = register_schema(&f, true);
+
+    let mut inputs = Vec::new(&f.env);
+    inputs.push_back(AttestInput {
+        schema_uid: schema_uid.clone(),
+        subject: f.subject.clone(),
+        data: Bytes::from_array(&f.env, &[1]),
+        expiration: None,
+        ref_uid: None,
+    });
+    inputs.push_back(AttestInput {
+        schema_uid: schema_uid.clone(),
+        subject: f.subject.clone(),
+        data: Bytes::from_array(&f.env, &[2]),
+        expiration: Some(1_999),
+        ref_uid: None,
+    });
+    inputs.push_back(AttestInput {
+        schema_uid: schema_uid.clone(),
+        subject: f.subject.clone(),
+        data: Bytes::from_array(&f.env, &[3]),
+        expiration: None,
+        ref_uid: None,
+    });
+
+    let res = f.att.try_attest_batch(&f.issuer, &inputs);
+    assert_eq!(res, Err(Ok(Error::ExpirationInPast)));
+
+    assert_eq!(f.att.schema_attestation_count(&schema_uid), 0);
+    assert_eq!(f.att.attestations_for_subject(&f.subject).len(), 0);
+
+    let uid = f.att.attest(
+        &f.issuer,
+        &schema_uid,
+        &f.subject,
+        &data(&f.env),
+        &None,
+        &None,
+    );
+    assert_eq!(f.att.schema_attestation_count(&schema_uid), 1);
+    assert!(f.att.is_valid(&uid));
+}
