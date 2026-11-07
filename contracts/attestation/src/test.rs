@@ -396,3 +396,17 @@ fn revoke_expired_attestation_succeeds() {
     assert!(a.revoked);
     assert_eq!(a.revocation_time, Some(2_500));
 }
+
+#[test]
+fn attestation_uid_determinism_identical_inputs() {
+    let f = setup();
+    let schema_uid = BytesN::from_array(&f.env, &[2u8; 32]);
+    let d = data(&f.env);
+    let exp = Some(10_000);
+    let ref_uid = Some(BytesN::from_array(&f.env, &[3u8; 32]));
+
+    let uid1 = derive_uid(&f.env, &schema_uid, &f.issuer, &f.subject, &d, &exp, &ref_uid, 0);
+    let uid2 = derive_uid(&f.env, &schema_uid, &f.issuer, &f.subject, &d, &exp, &ref_uid, 0);
+
+    assert_eq!(uid1, uid2);
+}
