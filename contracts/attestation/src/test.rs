@@ -662,3 +662,221 @@ fn characterisation_multi_subject_index_and_issuer_nonces() {
     assert!(index_b.contains(uid_b1));
     assert!(index_b.contains(uid_b2));
 }
+
+#[test]
+fn attest_expiration_in_past_and_present_rejected() {
+    let f = setup();
+    f.env.ledger().with_mut(|l| l.timestamp = 2_000);
+    let schema_uid = register_schema(&f, true);
+
+    let res_past = f.att.try_attest(
+        &f.issuer,
+        &schema_uid,
+        &f.subject,
+        &data(&f.env),
+        &Some(1_999),
+        &None,
+    );
+    assert_eq!(res_past, Err(Ok(Error::ExpirationInPast)));
+
+    let res_now = f.att.try_attest(
+        &f.issuer,
+        &schema_uid,
+        &f.subject,
+        &data(&f.env),
+        &Some(2_000),
+        &None,
+    );
+    assert_eq!(res_now, Err(Ok(Error::ExpirationInPast)));
+
+    let res_future = f.att.try_attest(
+        &f.issuer,
+        &schema_uid,
+        &f.subject,
+        &data(&f.env),
+        &Some(2_001),
+        &None,
+    );
+    assert!(res_future.is_ok());
+}
+
+#[test]
+fn attest_ref_uid_validation_scenarios() {
+    let f = setup();
+    let schema_uid = register_schema(&f, true);
+
+    let first_uid = f.att.attest(
+        &f.issuer,
+        &schema_uid,
+        &f.subject,
+        &data(&f.env),
+        &None,
+        &None,
+    );
+
+    let missing_ref = BytesN::from_array(&f.env, &[99u8; 32]);
+    let res_missing = f.att.try_attest(
+        &f.issuer,
+        &schema_uid,
+        &f.subject,
+        &data(&f.env),
+        &None,
+        &Some(missing_ref),
+    );
+    assert_eq!(res_missing, Err(Ok(Error::RefNotFound)));
+
+    let res_valid = f.att.try_attest(
+        &f.issuer,
+        &schema_uid,
+        &f.subject,
+        &data(&f.env),
+        &None,
+        &Some(first_uid.clone()),
+    );
+    assert!(res_valid.is_ok());
+    let second_uid = res_valid.unwrap().unwrap();
+    let att = f.att.get_attestation(&second_uid).unwrap();
+    assert_eq!(att.ref_uid, Some(first_uid));
+}
+
+#[test]
+fn attest_batch_valid_entries_advance_nonces() {
+    let f = setup();
+    let schema_uid = register_schema(&f, true);
+
+    let mut inputs = Vec::new(&f.env);
+    for i in 0..5 {
+        inputs.push_back(AttestInput {
+            schema_uid: schema_uid.clone(),
+            subject: f.subject.clone(),
+            data: Bytes::from_array(&f.env, &[i as u8]),
+            expiration: None,
+            ref_uid: None,
+        });
+    }
+
+    let uids = f.att.attest_batch(&f.issuer, &inputs);
+    assert_eq!(uids.len(), 5);
+
+    for i in 0..5 {
+        for j in (i + 1)..5 {
+            assert_ne!(uids.get(i).unwrap(), uids.get(j).unwrap());
+        }
+        let a = f.att.get_attestation(&uids.get(i).unwrap()).unwrap();
+        assert_eq!(a.issuer, f.issuer);
+        assert_eq!(a.subject, f.subject);
+        assert!(!a.revoked);
+    }
+
+    let single_uid = f.att.attest(
+        &f.issuer,
+        &schema_uid,
+        &f.subject,
+        &data(&f.env),
+        &None,
+        &None,
+    );
+    assert!(!uids.contains(single_uid));
+}
+
+#[test]
+fn attest_batch_mixed_invalid_reverts_entire_batch() {
+    let f = setup();
+    f.env.ledger().with_mut(|l| l.timestamp = 2_000);
+    let schema_uid = register_schema(&f, true);
+
+    let mut inputs = Vec::new(&f.env);
+    inputs.push_back(AttestInput {
+        schema_uid: schema_uid.clone(),
+        subject: f.subject.clone(),
+        data: Bytes::from_array(&f.env, &[1]),
+        expiration: None,
+        ref_uid: None,
+    });
+    inputs.push_back(AttestInput {
+        schema_uid: schema_uid.clone(),
+        subject: f.subject.clone(),
+        data: Bytes::from_array(&f.env, &[2]),
+        expiration: Some(1_999),
+        ref_uid: None,
+    });
+    inputs.push_back(AttestInput {
+        schema_uid: schema_uid.clone(),
+        subject: f.subject.clone(),
+        data: Bytes::from_array(&f.env, &[3]),
+        expiration: None,
+        ref_uid: None,
+    });
+
+    let res = f.att.try_attest_batch(&f.issuer, &inputs);
+    assert_eq!(res, Err(Ok(Error::ExpirationInPast)));
+
+    assert_eq!(f.att.schema_attestation_count(&schema_uid), 0);
+    assert_eq!(f.att.attestations_for_subject(&f.subject).len(), 0);
+
+    let uid = f.att.attest(
+        &f.issuer,
+        &schema_uid,
+        &f.subject,
+        &data(&f.env),
+        &None,
+        &None,
+    );
+    assert_eq!(f.att.schema_attestation_count(&schema_uid), 1);
+    assert!(f.att.is_valid(&uid));
+}
+
+#[test]
+fn attest_batch_multi_schema_multi_subject_and_empty() {
+    let f = setup();
+    let schema_a = register_schema(&f, true);
+    let schema_b = f.registry.register_schema(
+        &f.authority,
+        &symbol_short!("ngo"),
+        &String::from_str(&f.env, "string reg_id"),
+        &true,
+        &None,
+    );
+    let subject_2 = Address::generate(&f.env);
+
+    let empty_inputs = Vec::new(&f.env);
+    let empty_res = f.att.attest_batch(&f.issuer, &empty_inputs);
+    assert_eq!(empty_res.len(), 0);
+
+    let mut inputs = Vec::new(&f.env);
+    inputs.push_back(AttestInput {
+        schema_uid: schema_a.clone(),
+        subject: f.subject.clone(),
+        data: Bytes::from_array(&f.env, &[1]),
+        expiration: None,
+        ref_uid: None,
+    });
+    inputs.push_back(AttestInput {
+        schema_uid: schema_b.clone(),
+        subject: f.subject.clone(),
+        data: Bytes::from_array(&f.env, &[2]),
+        expiration: None,
+        ref_uid: None,
+    });
+    inputs.push_back(AttestInput {
+        schema_uid: schema_a.clone(),
+        subject: subject_2.clone(),
+        data: Bytes::from_array(&f.env, &[3]),
+        expiration: None,
+        ref_uid: None,
+    });
+
+    let uids = f.att.attest_batch(&f.issuer, &inputs);
+    assert_eq!(uids.len(), 3);
+
+    assert_eq!(f.att.schema_attestation_count(&schema_a), 2);
+    assert_eq!(f.att.schema_attestation_count(&schema_b), 1);
+
+    let index_1 = f.att.attestations_for_subject(&f.subject);
+    let index_2 = f.att.attestations_for_subject(&subject_2);
+    assert_eq!(index_1.len(), 2);
+    assert_eq!(index_2.len(), 1);
+    assert!(index_1.contains(uids.get(0).unwrap()));
+    assert!(index_1.contains(uids.get(1).unwrap()));
+    assert!(index_2.contains(uids.get(2).unwrap()));
+}
