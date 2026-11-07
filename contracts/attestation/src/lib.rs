@@ -47,6 +47,7 @@ pub enum Error {
     DataTooLong = 6,
     NotInitialized = 7,
     ExpirationInPast = 8,
+    RefNotFound = 9,
 }
 
 /// One attestation. Stored under its uid in persistent storage.
