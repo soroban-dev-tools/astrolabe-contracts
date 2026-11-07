@@ -132,3 +132,15 @@ fn register_with_resolver_address() {
     let schema = client.get_schema(&uid).expect("schema exists");
     assert_eq!(schema.resolver, Some(resolver));
 }
+
+#[test]
+fn schema_uid_determinism_identical_inputs() {
+    let (env, _, authority) = setup();
+    let name = symbol_short!("det_test");
+    let definition = String::from_str(&env, "u32 value");
+
+    let uid1 = derive_uid(&env, &name, &definition, &authority);
+    let uid2 = derive_uid(&env, &name, &definition, &authority);
+
+    assert_eq!(uid1, uid2);
+}
