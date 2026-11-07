@@ -46,6 +46,7 @@ pub enum Error {
     AlreadyRevoked = 5,
     DataTooLong = 6,
     NotInitialized = 7,
+    ExpirationInPast = 8,
 }
 
 /// One attestation. Stored under its uid in persistent storage.
