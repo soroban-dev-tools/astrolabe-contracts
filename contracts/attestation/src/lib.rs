@@ -165,6 +165,7 @@ impl AttestationContract {
     /// - Returns `Error::DataTooLong` if `data` exceeds `MAX_DATA_LEN` (1024 bytes).
     /// - Returns `Error::SchemaNotFound` if `schema_uid` does not exist in the registry.
     /// - Returns `Error::NotInitialized` if the registry contract address is not set.
+    /// - Returns `Error::ExpirationInPast` if `expiration` is set and is less than or equal to current ledger time.
     pub fn attest(
         env: Env,
         issuer: Address,
@@ -178,6 +179,12 @@ impl AttestationContract {
 
         if data.len() > MAX_DATA_LEN {
             return Err(Error::DataTooLong);
+        }
+
+        if let Some(exp) = expiration {
+            if exp <= env.ledger().timestamp() {
+                return Err(Error::ExpirationInPast);
+            }
         }
 
         // Confirm the schema exists in the registry.
