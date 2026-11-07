@@ -738,3 +738,43 @@ fn attest_ref_uid_validation_scenarios() {
     let att = f.att.get_attestation(&second_uid).unwrap();
     assert_eq!(att.ref_uid, Some(first_uid));
 }
+
+#[test]
+fn attest_batch_valid_entries_advance_nonces() {
+    let f = setup();
+    let schema_uid = register_schema(&f, true);
+
+    let mut inputs = Vec::new(&f.env);
+    for i in 0..5 {
+        inputs.push_back(AttestInput {
+            schema_uid: schema_uid.clone(),
+            subject: f.subject.clone(),
+            data: Bytes::from_array(&f.env, &[i as u8]),
+            expiration: None,
+            ref_uid: None,
+        });
+    }
+
+    let uids = f.att.attest_batch(&f.issuer, &inputs);
+    assert_eq!(uids.len(), 5);
+
+    for i in 0..5 {
+        for j in (i + 1)..5 {
+            assert_ne!(uids.get(i).unwrap(), uids.get(j).unwrap());
+        }
+        let a = f.att.get_attestation(&uids.get(i).unwrap()).unwrap();
+        assert_eq!(a.issuer, f.issuer);
+        assert_eq!(a.subject, f.subject);
+        assert!(!a.revoked);
+    }
+
+    let single_uid = f.att.attest(
+        &f.issuer,
+        &schema_uid,
+        &f.subject,
+        &data(&f.env),
+        &None,
+        &None,
+    );
+    assert!(!uids.contains(single_uid));
+}
