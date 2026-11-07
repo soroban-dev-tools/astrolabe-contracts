@@ -201,7 +201,11 @@ impl AttestationContract {
         }
 
         if let Some(ref r) = ref_uid {
-            if !env.storage().persistent().has(&DataKey::Attestation(r.clone())) {
+            if !env
+                .storage()
+                .persistent()
+                .has(&DataKey::Attestation(r.clone()))
+            {
                 return Err(Error::RefNotFound);
             }
         }
@@ -290,7 +294,11 @@ impl AttestationContract {
                 return Err(Error::SchemaNotFound);
             }
             if let Some(ref r) = input.ref_uid {
-                if !env.storage().persistent().has(&DataKey::Attestation(r.clone())) {
+                if !env
+                    .storage()
+                    .persistent()
+                    .has(&DataKey::Attestation(r.clone()))
+                {
                     return Err(Error::RefNotFound);
                 }
             }
