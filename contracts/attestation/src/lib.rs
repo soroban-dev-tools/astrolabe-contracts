@@ -167,6 +167,7 @@ impl AttestationContract {
     /// - Returns `Error::SchemaNotFound` if `schema_uid` does not exist in the registry.
     /// - Returns `Error::NotInitialized` if the registry contract address is not set.
     /// - Returns `Error::ExpirationInPast` if `expiration` is set and is less than or equal to current ledger time.
+    /// - Returns `Error::RefNotFound` if `ref_uid` is set but the referenced attestation does not exist.
     pub fn attest(
         env: Env,
         issuer: Address,
@@ -185,6 +186,12 @@ impl AttestationContract {
         if let Some(exp) = expiration {
             if exp <= env.ledger().timestamp() {
                 return Err(Error::ExpirationInPast);
+            }
+        }
+
+        if let Some(ref r) = ref_uid {
+            if !env.storage().persistent().has(&DataKey::Attestation(r.clone())) {
+                return Err(Error::RefNotFound);
             }
         }
 
