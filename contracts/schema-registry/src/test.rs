@@ -170,3 +170,16 @@ fn schema_uid_sensitivity_definition_change() {
 
     assert_ne!(uid1, uid2);
 }
+
+#[test]
+fn schema_uid_sensitivity_authority_change() {
+    let (env, _, authority1) = setup();
+    let authority2 = Address::generate(&env);
+    let name = symbol_short!("sch_auth");
+    let definition = String::from_str(&env, "bool verified");
+
+    let uid1 = derive_uid(&env, &name, &definition, &authority1);
+    let uid2 = derive_uid(&env, &name, &definition, &authority2);
+
+    assert_ne!(uid1, uid2);
+}
