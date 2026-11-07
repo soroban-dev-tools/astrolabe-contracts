@@ -699,3 +699,42 @@ fn attest_expiration_in_past_and_present_rejected() {
     );
     assert!(res_future.is_ok());
 }
+
+#[test]
+fn attest_ref_uid_validation_scenarios() {
+    let f = setup();
+    let schema_uid = register_schema(&f, true);
+
+    let first_uid = f.att.attest(
+        &f.issuer,
+        &schema_uid,
+        &f.subject,
+        &data(&f.env),
+        &None,
+        &None,
+    );
+
+    let missing_ref = BytesN::from_array(&f.env, &[99u8; 32]);
+    let res_missing = f.att.try_attest(
+        &f.issuer,
+        &schema_uid,
+        &f.subject,
+        &data(&f.env),
+        &None,
+        &Some(missing_ref),
+    );
+    assert_eq!(res_missing, Err(Ok(Error::RefNotFound)));
+
+    let res_valid = f.att.try_attest(
+        &f.issuer,
+        &schema_uid,
+        &f.subject,
+        &data(&f.env),
+        &None,
+        &Some(first_uid.clone()),
+    );
+    assert!(res_valid.is_ok());
+    let second_uid = res_valid.unwrap().unwrap();
+    let att = f.att.get_attestation(&second_uid).unwrap();
+    assert_eq!(att.ref_uid, Some(first_uid));
+}
