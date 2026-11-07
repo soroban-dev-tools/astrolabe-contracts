@@ -405,8 +405,26 @@ fn attestation_uid_determinism_identical_inputs() {
     let exp = Some(10_000);
     let ref_uid = Some(BytesN::from_array(&f.env, &[3u8; 32]));
 
-    let uid1 = derive_uid(&f.env, &schema_uid, &f.issuer, &f.subject, &d, &exp, &ref_uid, 0);
-    let uid2 = derive_uid(&f.env, &schema_uid, &f.issuer, &f.subject, &d, &exp, &ref_uid, 0);
+    let uid1 = derive_uid(
+        &f.env,
+        &schema_uid,
+        &f.issuer,
+        &f.subject,
+        &d,
+        &exp,
+        &ref_uid,
+        0,
+    );
+    let uid2 = derive_uid(
+        &f.env,
+        &schema_uid,
+        &f.issuer,
+        &f.subject,
+        &d,
+        &exp,
+        &ref_uid,
+        0,
+    );
 
     assert_eq!(uid1, uid2);
 }
@@ -419,12 +437,39 @@ fn attestation_uid_sensitivity_schema_and_subject() {
     let subject2 = Address::generate(&f.env);
     let d = data(&f.env);
 
-    let base_uid = derive_uid(&f.env, &schema_uid1, &f.issuer, &f.subject, &d, &None, &None, 0);
+    let base_uid = derive_uid(
+        &f.env,
+        &schema_uid1,
+        &f.issuer,
+        &f.subject,
+        &d,
+        &None,
+        &None,
+        0,
+    );
 
-    let diff_schema = derive_uid(&f.env, &schema_uid2, &f.issuer, &f.subject, &d, &None, &None, 0);
+    let diff_schema = derive_uid(
+        &f.env,
+        &schema_uid2,
+        &f.issuer,
+        &f.subject,
+        &d,
+        &None,
+        &None,
+        0,
+    );
     assert_ne!(base_uid, diff_schema);
 
-    let diff_subject = derive_uid(&f.env, &schema_uid1, &f.issuer, &subject2, &d, &None, &None, 0);
+    let diff_subject = derive_uid(
+        &f.env,
+        &schema_uid1,
+        &f.issuer,
+        &subject2,
+        &d,
+        &None,
+        &None,
+        0,
+    );
     assert_ne!(base_uid, diff_subject);
 }
 
@@ -537,4 +582,30 @@ fn attestation_uid_sensitivity_ref_and_nonce() {
         1,
     );
     assert_ne!(base_uid, diff_nonce);
+}
+
+#[test]
+fn attestation_uid_regression_golden_value() {
+    let env = Env::default();
+    let schema_uid = BytesN::from_array(&env, &[1u8; 32]);
+    let issuer = Address::from_str(
+        &env,
+        "CAYUJL5VPIVDBAGXAQ3FTOUJ4LICWV6IFKIMTRPAJB7ZS5FMRRI3M5EC",
+    );
+    let subject = Address::from_str(
+        &env,
+        "CB2773G3PKQVSECFXTM2Q65W2XJLMWGQXC5UTFBQEPHYPAGUEXEYBMW4",
+    );
+    let d = Bytes::from_array(&env, &[10, 20, 30]);
+    let exp = Some(1_700_000_000);
+
+    let uid = derive_uid(&env, &schema_uid, &issuer, &subject, &d, &exp, &None, 0);
+    let expected = BytesN::from_array(
+        &env,
+        &[
+            134, 136, 219, 199, 4, 59, 0, 239, 30, 77, 178, 153, 219, 159, 74, 208, 226, 24, 240,
+            21, 29, 72, 234, 167, 114, 247, 251, 175, 112, 126, 201, 122,
+        ],
+    );
+    assert_eq!(uid, expected);
 }
