@@ -184,8 +184,7 @@ impl AttestationContract {
             return Err(Error::SchemaNotFound);
         }
 
-        let nonce_key = DataKey::Nonce(issuer.clone());
-        let nonce: u64 = env.storage().persistent().get(&nonce_key).unwrap_or(0);
+        let nonce = Self::read_and_advance_nonce(&env, &issuer, 1);
 
         let uid = derive_uid(
             &env,
@@ -210,19 +209,9 @@ impl AttestationContract {
             created_at: env.ledger().timestamp(),
         };
 
-        let att_key = DataKey::Attestation(uid.clone());
-        env.storage().persistent().set(&att_key, &attestation);
-        env.storage()
-            .persistent()
-            .extend_ttl(&att_key, TTL_THRESHOLD, TTL_EXTEND);
-
-        env.storage().persistent().set(&nonce_key, &(nonce + 1));
-
+        Self::write_attestation(&env, &uid, &attestation);
         Self::push_subject_index(&env, &subject, &uid);
-
-        let count_key = DataKey::SchemaCount(schema_uid.clone());
-        let count: u64 = env.storage().persistent().get(&count_key).unwrap_or(0);
-        env.storage().persistent().set(&count_key, &(count + 1));
+        Self::increment_schema_count(&env, &schema_uid, 1);
 
         Attested {
             schema_uid,
@@ -273,10 +262,7 @@ impl AttestationContract {
         let now = env.ledger().timestamp();
         attestation.revoked = true;
         attestation.revocation_time = Some(now);
-        env.storage().persistent().set(&att_key, &attestation);
-        env.storage()
-            .persistent()
-            .extend_ttl(&att_key, TTL_THRESHOLD, TTL_EXTEND);
+        Self::write_attestation(&env, &attestation_uid, &attestation);
 
         Revoked {
             schema_uid: attestation.schema_uid.clone(),
@@ -363,6 +349,27 @@ impl AttestationContract {
         let schema: Option<SchemaView> =
             env.invoke_contract(&registry, &Symbol::new(env, "get_schema"), args);
         Ok(schema)
+    }
+
+    fn write_attestation(env: &Env, uid: &BytesN<32>, attestation: &Attestation) {
+        let att_key = DataKey::Attestation(uid.clone());
+        env.storage().persistent().set(&att_key, attestation);
+        env.storage()
+            .persistent()
+            .extend_ttl(&att_key, TTL_THRESHOLD, TTL_EXTEND);
+    }
+
+    fn read_and_advance_nonce(env: &Env, issuer: &Address, count: u64) -> u64 {
+        let nonce_key = DataKey::Nonce(issuer.clone());
+        let nonce: u64 = env.storage().persistent().get(&nonce_key).unwrap_or(0);
+        env.storage().persistent().set(&nonce_key, &(nonce + count));
+        nonce
+    }
+
+    fn increment_schema_count(env: &Env, schema_uid: &BytesN<32>, delta: u64) {
+        let count_key = DataKey::SchemaCount(schema_uid.clone());
+        let count: u64 = env.storage().persistent().get(&count_key).unwrap_or(0);
+        env.storage().persistent().set(&count_key, &(count + delta));
     }
 
     fn push_subject_index(env: &Env, subject: &Address, uid: &BytesN<32>) {

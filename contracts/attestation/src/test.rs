@@ -617,20 +617,40 @@ fn characterisation_multi_subject_index_and_issuer_nonces() {
     let subject_b = Address::generate(&f.env);
     let issuer_b = Address::generate(&f.env);
 
-    let uid_a1 = f
-        .att
-        .attest(&f.issuer, &schema_uid, &f.subject, &data(&f.env), &None, &None);
-    let uid_a2 = f
-        .att
-        .attest(&f.issuer, &schema_uid, &f.subject, &data(&f.env), &None, &None);
+    let uid_a1 = f.att.attest(
+        &f.issuer,
+        &schema_uid,
+        &f.subject,
+        &data(&f.env),
+        &None,
+        &None,
+    );
+    let uid_a2 = f.att.attest(
+        &f.issuer,
+        &schema_uid,
+        &f.subject,
+        &data(&f.env),
+        &None,
+        &None,
+    );
     assert_ne!(uid_a1, uid_a2);
 
-    let uid_b1 = f
-        .att
-        .attest(&f.issuer, &schema_uid, &subject_b, &data(&f.env), &None, &None);
-    let uid_b2 = f
-        .att
-        .attest(&issuer_b, &schema_uid, &subject_b, &data(&f.env), &None, &None);
+    let uid_b1 = f.att.attest(
+        &f.issuer,
+        &schema_uid,
+        &subject_b,
+        &data(&f.env),
+        &None,
+        &None,
+    );
+    let uid_b2 = f.att.attest(
+        &issuer_b,
+        &schema_uid,
+        &subject_b,
+        &data(&f.env),
+        &None,
+        &None,
+    );
     assert_ne!(uid_b1, uid_b2);
 
     let index_a = f.att.attestations_for_subject(&f.subject);
