@@ -396,3 +396,269 @@ fn revoke_expired_attestation_succeeds() {
     assert!(a.revoked);
     assert_eq!(a.revocation_time, Some(2_500));
 }
+
+#[test]
+fn attestation_uid_determinism_identical_inputs() {
+    let f = setup();
+    let schema_uid = BytesN::from_array(&f.env, &[2u8; 32]);
+    let d = data(&f.env);
+    let exp = Some(10_000);
+    let ref_uid = Some(BytesN::from_array(&f.env, &[3u8; 32]));
+
+    let uid1 = derive_uid(
+        &f.env,
+        &schema_uid,
+        &f.issuer,
+        &f.subject,
+        &d,
+        &exp,
+        &ref_uid,
+        0,
+    );
+    let uid2 = derive_uid(
+        &f.env,
+        &schema_uid,
+        &f.issuer,
+        &f.subject,
+        &d,
+        &exp,
+        &ref_uid,
+        0,
+    );
+
+    assert_eq!(uid1, uid2);
+}
+
+#[test]
+fn attestation_uid_sensitivity_schema_and_subject() {
+    let f = setup();
+    let schema_uid1 = BytesN::from_array(&f.env, &[2u8; 32]);
+    let schema_uid2 = BytesN::from_array(&f.env, &[7u8; 32]);
+    let subject2 = Address::generate(&f.env);
+    let d = data(&f.env);
+
+    let base_uid = derive_uid(
+        &f.env,
+        &schema_uid1,
+        &f.issuer,
+        &f.subject,
+        &d,
+        &None,
+        &None,
+        0,
+    );
+
+    let diff_schema = derive_uid(
+        &f.env,
+        &schema_uid2,
+        &f.issuer,
+        &f.subject,
+        &d,
+        &None,
+        &None,
+        0,
+    );
+    assert_ne!(base_uid, diff_schema);
+
+    let diff_subject = derive_uid(
+        &f.env,
+        &schema_uid1,
+        &f.issuer,
+        &subject2,
+        &d,
+        &None,
+        &None,
+        0,
+    );
+    assert_ne!(base_uid, diff_subject);
+}
+
+#[test]
+fn attestation_uid_sensitivity_data_and_expiration() {
+    let f = setup();
+    let schema_uid = BytesN::from_array(&f.env, &[2u8; 32]);
+    let d1 = Bytes::from_array(&f.env, &[1, 2, 3]);
+    let d2 = Bytes::from_array(&f.env, &[1, 2, 4]);
+
+    let base_uid = derive_uid(
+        &f.env,
+        &schema_uid,
+        &f.issuer,
+        &f.subject,
+        &d1,
+        &Some(1_000),
+        &None,
+        0,
+    );
+
+    let diff_data = derive_uid(
+        &f.env,
+        &schema_uid,
+        &f.issuer,
+        &f.subject,
+        &d2,
+        &Some(1_000),
+        &None,
+        0,
+    );
+    assert_ne!(base_uid, diff_data);
+
+    let diff_exp = derive_uid(
+        &f.env,
+        &schema_uid,
+        &f.issuer,
+        &f.subject,
+        &d1,
+        &Some(2_000),
+        &None,
+        0,
+    );
+    assert_ne!(base_uid, diff_exp);
+
+    let none_exp = derive_uid(
+        &f.env,
+        &schema_uid,
+        &f.issuer,
+        &f.subject,
+        &d1,
+        &None,
+        &None,
+        0,
+    );
+    assert_ne!(base_uid, none_exp);
+}
+
+#[test]
+fn attestation_uid_sensitivity_ref_and_nonce() {
+    let f = setup();
+    let schema_uid = BytesN::from_array(&f.env, &[2u8; 32]);
+    let ref1 = BytesN::from_array(&f.env, &[10u8; 32]);
+    let ref2 = BytesN::from_array(&f.env, &[11u8; 32]);
+    let d = data(&f.env);
+
+    let base_uid = derive_uid(
+        &f.env,
+        &schema_uid,
+        &f.issuer,
+        &f.subject,
+        &d,
+        &None,
+        &Some(ref1.clone()),
+        0,
+    );
+
+    let diff_ref = derive_uid(
+        &f.env,
+        &schema_uid,
+        &f.issuer,
+        &f.subject,
+        &d,
+        &None,
+        &Some(ref2),
+        0,
+    );
+    assert_ne!(base_uid, diff_ref);
+
+    let none_ref = derive_uid(
+        &f.env,
+        &schema_uid,
+        &f.issuer,
+        &f.subject,
+        &d,
+        &None,
+        &None,
+        0,
+    );
+    assert_ne!(base_uid, none_ref);
+
+    let diff_nonce = derive_uid(
+        &f.env,
+        &schema_uid,
+        &f.issuer,
+        &f.subject,
+        &d,
+        &None,
+        &Some(ref1),
+        1,
+    );
+    assert_ne!(base_uid, diff_nonce);
+}
+
+#[test]
+fn attestation_uid_regression_golden_value() {
+    let env = Env::default();
+    let schema_uid = BytesN::from_array(&env, &[1u8; 32]);
+    let issuer = Address::from_str(
+        &env,
+        "CAYUJL5VPIVDBAGXAQ3FTOUJ4LICWV6IFKIMTRPAJB7ZS5FMRRI3M5EC",
+    );
+    let subject = Address::from_str(
+        &env,
+        "CB2773G3PKQVSECFXTM2Q65W2XJLMWGQXC5UTFBQEPHYPAGUEXEYBMW4",
+    );
+    let d = Bytes::from_array(&env, &[10, 20, 30]);
+    let exp = Some(1_700_000_000);
+
+    let uid = derive_uid(&env, &schema_uid, &issuer, &subject, &d, &exp, &None, 0);
+    let expected = BytesN::from_array(
+        &env,
+        &[
+            134, 136, 219, 199, 4, 59, 0, 239, 30, 77, 178, 153, 219, 159, 74, 208, 226, 24, 240,
+            21, 29, 72, 234, 167, 114, 247, 251, 175, 112, 126, 201, 122,
+        ],
+    );
+    assert_eq!(uid, expected);
+}
+
+#[test]
+fn characterisation_multi_subject_index_and_issuer_nonces() {
+    let f = setup();
+    let schema_uid = register_schema(&f, true);
+    let subject_b = Address::generate(&f.env);
+    let issuer_b = Address::generate(&f.env);
+
+    let uid_a1 = f.att.attest(
+        &f.issuer,
+        &schema_uid,
+        &f.subject,
+        &data(&f.env),
+        &None,
+        &None,
+    );
+    let uid_a2 = f.att.attest(
+        &f.issuer,
+        &schema_uid,
+        &f.subject,
+        &data(&f.env),
+        &None,
+        &None,
+    );
+    assert_ne!(uid_a1, uid_a2);
+
+    let uid_b1 = f.att.attest(
+        &f.issuer,
+        &schema_uid,
+        &subject_b,
+        &data(&f.env),
+        &None,
+        &None,
+    );
+    let uid_b2 = f.att.attest(
+        &issuer_b,
+        &schema_uid,
+        &subject_b,
+        &data(&f.env),
+        &None,
+        &None,
+    );
+    assert_ne!(uid_b1, uid_b2);
+
+    let index_a = f.att.attestations_for_subject(&f.subject);
+    let index_b = f.att.attestations_for_subject(&subject_b);
+    assert_eq!(index_a.len(), 2);
+    assert_eq!(index_b.len(), 2);
+    assert!(index_a.contains(uid_a1));
+    assert!(index_a.contains(uid_a2));
+    assert!(index_b.contains(uid_b1));
+    assert!(index_b.contains(uid_b2));
+}

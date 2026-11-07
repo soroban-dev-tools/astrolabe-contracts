@@ -132,3 +132,75 @@ fn register_with_resolver_address() {
     let schema = client.get_schema(&uid).expect("schema exists");
     assert_eq!(schema.resolver, Some(resolver));
 }
+
+#[test]
+fn schema_uid_determinism_identical_inputs() {
+    let (env, _, authority) = setup();
+    let name = symbol_short!("det_test");
+    let definition = String::from_str(&env, "u32 value");
+
+    let uid1 = derive_uid(&env, &name, &definition, &authority);
+    let uid2 = derive_uid(&env, &name, &definition, &authority);
+
+    assert_eq!(uid1, uid2);
+}
+
+#[test]
+fn schema_uid_sensitivity_name_change() {
+    let (env, _, authority) = setup();
+    let name1 = symbol_short!("name_one");
+    let name2 = symbol_short!("name_two");
+    let definition = String::from_str(&env, "u32 value");
+
+    let uid1 = derive_uid(&env, &name1, &definition, &authority);
+    let uid2 = derive_uid(&env, &name2, &definition, &authority);
+
+    assert_ne!(uid1, uid2);
+}
+
+#[test]
+fn schema_uid_sensitivity_definition_change() {
+    let (env, _, authority) = setup();
+    let name = symbol_short!("sch_def");
+    let def1 = String::from_str(&env, "string title");
+    let def2 = String::from_str(&env, "string summary");
+
+    let uid1 = derive_uid(&env, &name, &def1, &authority);
+    let uid2 = derive_uid(&env, &name, &def2, &authority);
+
+    assert_ne!(uid1, uid2);
+}
+
+#[test]
+fn schema_uid_sensitivity_authority_change() {
+    let (env, _, authority1) = setup();
+    let authority2 = Address::generate(&env);
+    let name = symbol_short!("sch_auth");
+    let definition = String::from_str(&env, "bool verified");
+
+    let uid1 = derive_uid(&env, &name, &definition, &authority1);
+    let uid2 = derive_uid(&env, &name, &definition, &authority2);
+
+    assert_ne!(uid1, uid2);
+}
+
+#[test]
+fn schema_uid_regression_golden_value() {
+    let env = Env::default();
+    let authority = Address::from_str(
+        &env,
+        "CAYUJL5VPIVDBAGXAQ3FTOUJ4LICWV6IFKIMTRPAJB7ZS5FMRRI3M5EC",
+    );
+    let name = symbol_short!("kyc_tier");
+    let definition = String::from_str(&env, "u32 tier");
+
+    let uid = derive_uid(&env, &name, &definition, &authority);
+    let expected = BytesN::from_array(
+        &env,
+        &[
+            138, 62, 209, 75, 102, 79, 172, 7, 113, 40, 66, 48, 77, 154, 195, 26, 231, 81, 238, 30,
+            50, 197, 55, 238, 185, 10, 236, 21, 76, 10, 87, 3,
+        ],
+    );
+    assert_eq!(uid, expected);
+}
