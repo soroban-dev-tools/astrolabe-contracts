@@ -96,17 +96,24 @@ attest(
     schema_uid: BytesN<32>,        // must exist in the schema registry
     subject: Address,
     data: Bytes,                   // encoded per the schema definition; opaque on chain
-    expiration: Option<u64>,       // ledger timestamp after which is_valid is false
-    ref_uid: Option<BytesN<32>>    // optional link to another attestation
+    expiration: Option<u64>,       // ledger timestamp after which is_valid is false; must be > now
+    ref_uid: Option<BytesN<32>>    // optional link to an existing attestation
 ) -> BytesN<32>                    // attestation_uid
+
+attest_batch(
+    issuer: Address,               // requires auth
+    inputs: Vec<AttestInput>       // atomic batch of attestation inputs
+) -> Vec<BytesN<32>>               // list of attestation_uids in input order
 
 revoke(issuer: Address, attestation_uid: BytesN<32>)
 get_attestation(attestation_uid: BytesN<32>) -> Option<Attestation>
 is_valid(attestation_uid: BytesN<32>) -> bool
 attestations_for_subject(subject: Address) -> Vec<BytesN<32>>
+schema_attestation_count(schema_uid: BytesN<32>) -> u64
+registry() -> Result<Address, Error>
 ```
 
-### 3.2 Attestation record
+### 3.2 Attestation records
 
 ```
 struct Attestation {
@@ -119,6 +126,14 @@ struct Attestation {
     revoked: bool,
     revocation_time: Option<u64>,
     created_at: u64,               // ledger timestamp at attest
+}
+
+struct AttestInput {
+    schema_uid: BytesN<32>,
+    subject: Address,
+    data: Bytes,
+    expiration: Option<u64>,
+    ref_uid: Option<BytesN<32>>,
 }
 ```
 
@@ -151,6 +166,14 @@ twice, and keeps derivation deterministic and replayable off chain.
 - `is_valid` returns true only when the attestation exists, is not revoked, and is
   either non-expiring or its `expiration` is strictly greater than the current
   ledger timestamp.
+- If `expiration` is `Some(exp)`, it must be strictly greater than the current
+  ledger timestamp (`exp > now`), else `ExpirationInPast`.
+- If `ref_uid` is `Some(ref)`, the referenced attestation must exist in storage,
+  else `RefNotFound`.
+- `attest_batch` processes a vector of `AttestInput` records atomically under a
+  single issuer authorization. Nonces are assigned sequentially starting from
+  `Nonce(issuer)` and advanced by the batch size. If any entry in the batch is
+  invalid, the entire transaction reverts.
 
 ### 3.5 Per-subject index
 
@@ -237,6 +260,8 @@ Attestation registry:
 | 5    | AlreadyRevoked        | revoke attempted on a revoked attestation  |
 | 6    | DataTooLong           | data exceeds MAX_DATA_LEN                   |
 | 7    | NotInitialized        | registry contract id not set               |
+| 8    | ExpirationInPast      | expiration timestamp <= current ledger time |
+| 9    | RefNotFound           | ref_uid does not exist in storage           |
 
 ## 7. Worked example
 
