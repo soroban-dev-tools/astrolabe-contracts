@@ -65,6 +65,17 @@ pub struct Attestation {
     pub created_at: u64,
 }
 
+/// Input parameters for creating an attestation within a batch.
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct AttestInput {
+    pub schema_uid: BytesN<32>,
+    pub subject: Address,
+    pub data: Bytes,
+    pub expiration: Option<u64>,
+    pub ref_uid: Option<BytesN<32>>,
+}
+
 /// Mirror of the schema registry's `Schema` record, used only to decode the
 /// cross-contract `get_schema` response. Field names must match the registry.
 #[contracttype]
