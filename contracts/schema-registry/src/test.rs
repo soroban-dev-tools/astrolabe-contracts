@@ -144,3 +144,16 @@ fn schema_uid_determinism_identical_inputs() {
 
     assert_eq!(uid1, uid2);
 }
+
+#[test]
+fn schema_uid_sensitivity_name_change() {
+    let (env, _, authority) = setup();
+    let name1 = symbol_short!("name_one");
+    let name2 = symbol_short!("name_two");
+    let definition = String::from_str(&env, "u32 value");
+
+    let uid1 = derive_uid(&env, &name1, &definition, &authority);
+    let uid2 = derive_uid(&env, &name2, &definition, &authority);
+
+    assert_ne!(uid1, uid2);
+}
