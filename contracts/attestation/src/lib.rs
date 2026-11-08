@@ -394,6 +394,41 @@ impl AttestationContract {
         registry_id(&env)
     }
 
+    /// Designate an Ed25519 public key authorized to sign off-chain delegated attestations
+    /// on behalf of the issuer.
+    pub fn set_authorized_signer(env: Env, issuer: Address, signer: BytesN<32>) {
+        issuer.require_auth();
+        let key = DataKey::Signer(issuer.clone());
+        env.storage().persistent().set(&key, &signer);
+        env.storage()
+            .persistent()
+            .extend_ttl(&key, TTL_THRESHOLD, TTL_EXTEND);
+
+        SignerSet { issuer, signer }.publish(&env);
+    }
+
+    /// Clear an authorized off-chain signing key for an issuer.
+    pub fn clear_authorized_signer(env: Env, issuer: Address) {
+        issuer.require_auth();
+        let key = DataKey::Signer(issuer.clone());
+        if env.storage().persistent().has(&key) {
+            env.storage().persistent().remove(&key);
+            SignerCleared { issuer }.publish(&env);
+        }
+    }
+
+    /// Read the authorized off-chain signing public key for an issuer, if configured.
+    pub fn get_authorized_signer(env: Env, issuer: Address) -> Option<BytesN<32>> {
+        let key = DataKey::Signer(issuer);
+        let signer = env.storage().persistent().get(&key);
+        if signer.is_some() {
+            env.storage()
+                .persistent()
+                .extend_ttl(&key, TTL_THRESHOLD, TTL_EXTEND);
+        }
+        signer
+    }
+
     /// Check every attestation precondition that does not depend on the issuer.
     /// Returns the schema so callers can reuse it without a second registry call.
     fn validate_input(env: &Env, input: &AttestInput, now: u64) -> Result<SchemaView, Error> {
