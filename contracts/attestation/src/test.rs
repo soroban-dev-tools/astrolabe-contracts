@@ -1313,3 +1313,23 @@ fn verify_offchain_valid_signature_and_revocation_states() {
     let res = f.att.verify_offchain(&f.issuer, &hash, &sig);
     assert!(!res);
 }
+
+#[test]
+#[should_panic]
+fn verify_offchain_invalid_signature_panics() {
+    use ed25519_dalek::{Signer as _, SigningKey};
+
+    let f = setup();
+    let hash = BytesN::from_array(&f.env, &[71u8; 32]);
+
+    let signing_key = SigningKey::from_bytes(&[55u8; 32]);
+    let verifying_key = signing_key.verifying_key();
+    let signer = BytesN::from_array(&f.env, &verifying_key.to_bytes());
+    f.att.set_authorized_signer(&f.issuer, &signer);
+
+    let wrong_key = SigningKey::from_bytes(&[66u8; 32]);
+    let sig_raw = wrong_key.sign(&hash.to_array());
+    let bad_sig = BytesN::from_array(&f.env, &sig_raw.to_bytes());
+
+    let _ = f.att.verify_offchain(&f.issuer, &hash, &bad_sig);
+}
