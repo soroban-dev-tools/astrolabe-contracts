@@ -269,6 +269,51 @@ impl AttestationContract {
         Ok(uids)
     }
 
+    /// Create an attestation using an off-chain Ed25519 signature from an authorized signer.
+    ///
+    /// The transaction submitter does not need to be the issuer.
+    /// The issuer's authorization is verified cryptographically via an Ed25519 signature over
+    /// the canonical delegation payload, bound to the current nonce and an expiration deadline.
+    ///
+    /// # Errors
+    ///
+    /// - Returns `Error::DeadlineExceeded` if current ledger timestamp exceeds `deadline`.
+    /// - Returns `Error::SignerNotConfigured` if `issuer` has not set an authorized signer key.
+    /// - Returns `Error::DataTooLong` if `input.data` exceeds `MAX_DATA_LEN` (1024 bytes).
+    /// - Returns `Error::ExpirationInPast` if `input.expiration` is <= current ledger time.
+    /// - Returns `Error::SchemaNotFound` if `input.schema_uid` does not exist in registry.
+    /// - Returns `Error::RefNotFound` if `input.ref_uid` does not exist.
+    /// - Returns `Error::ResolverRejected` if schema resolver rejects the attestation.
+    pub fn attest_delegated(
+        env: Env,
+        issuer: Address,
+        input: AttestInput,
+        deadline: u64,
+        signature: BytesN<64>,
+    ) -> Result<BytesN<32>, Error> {
+        let now = env.ledger().timestamp();
+        if now > deadline {
+            return Err(Error::DeadlineExceeded);
+        }
+
+        let schema = Self::validate_input(&env, &input, now)?;
+
+        let signer = env
+            .storage()
+            .persistent()
+            .get::<_, BytesN<32>>(&DataKey::Signer(issuer.clone()))
+            .ok_or(Error::SignerNotConfigured)?;
+
+        let nonce_key = DataKey::Nonce(issuer.clone());
+        let nonce: u64 = env.storage().persistent().get(&nonce_key).unwrap_or(0);
+
+        let payload = Self::compute_delegated_payload(&env, &issuer, &input, nonce, deadline);
+        env.crypto().ed25519_verify(&signer, &payload, &signature);
+
+        Self::read_and_advance_nonce(&env, &issuer, 1);
+        Self::store_attestation(&env, &issuer, input, &schema, nonce, now)
+    }
+
     /// Revoke an attestation. Only the original issuer may revoke, and only if the
     /// schema is revocable and the attestation is not already revoked.
     ///
