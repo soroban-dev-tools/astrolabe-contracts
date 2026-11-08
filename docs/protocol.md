@@ -105,6 +105,24 @@ attest_batch(
     inputs: Vec<AttestInput>       // atomic batch of attestation inputs
 ) -> Vec<BytesN<32>>               // list of attestation_uids in input order
 
+attest_delegated(
+    issuer: Address,               // identity under which attestation is recorded
+    input: AttestInput,            // attestation parameters
+    deadline: u64,                 // ledger timestamp deadline for signature validity
+    signature: BytesN<64>          // Ed25519 signature over canonical delegation payload
+) -> BytesN<32>                    // attestation_uid
+
+set_authorized_signer(issuer: Address, signer: BytesN<32>)  // requires issuer auth
+clear_authorized_signer(issuer: Address)                    // requires issuer auth
+get_authorized_signer(issuer: Address) -> Option<BytesN<32>>
+get_nonce(issuer: Address) -> u64
+delegated_attestation_payload(
+    issuer: Address,
+    input: AttestInput,
+    nonce: u64,
+    deadline: u64
+) -> Bytes
+
 revoke(issuer: Address, attestation_uid: BytesN<32>)
 get_attestation(attestation_uid: BytesN<32>) -> Option<Attestation>
 is_valid(attestation_uid: BytesN<32>) -> bool
@@ -262,6 +280,25 @@ Attestation registry:
 | 7    | NotInitialized        | registry contract id not set               |
 | 8    | ExpirationInPast      | expiration timestamp <= current ledger time |
 | 9    | RefNotFound           | ref_uid does not exist in storage           |
+| 10   | ResolverRejected      | schema resolver returned false              |
+| 11   | SignerNotConfigured   | issuer has not configured an authorized key |
+| 12   | DeadlineExceeded      | current ledger timestamp exceeds deadline   |
+
+## 4. Resolver contracts
+
+Schemas may optionally designate a resolver contract address. When configured:
+- On attestation creation, the registry invokes `ResolverClient::on_attest(&attestation)`.
+- On revocation, the registry invokes `ResolverClient::on_revoke(&attestation)`.
+- If either hook returns `false`, the operation reverts with `Error::ResolverRejected`.
+
+## 5. Delegated attestations
+
+Issuers can authorize off-chain signing keys to produce attestations without submitting transactions directly:
+1. The issuer calls `set_authorized_signer(issuer, signer_pubkey)` where `signer_pubkey` is a 32-byte Ed25519 public key.
+2. The signer signs the canonical payload produced by `delegated_attestation_payload(issuer, input, nonce, deadline)`:
+   `sha256(xdr("attest_del") || xdr(issuer) || xdr(schema_uid) || xdr(subject) || xdr(data) || xdr(expiration) || xdr(ref_uid) || xdr(nonce) || xdr(deadline))`
+3. Any relayer calls `attest_delegated(issuer, input, deadline, signature)`.
+4. The contract verifies the Ed25519 signature, advances `Nonce(issuer)`, checks the deadline, and writes the attestation record.
 
 ## 7. Worked example
 

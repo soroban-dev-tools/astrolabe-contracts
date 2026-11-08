@@ -880,3 +880,378 @@ fn attest_batch_multi_schema_multi_subject_and_empty() {
     assert!(index_1.contains(uids.get(1).unwrap()));
     assert!(index_2.contains(uids.get(2).unwrap()));
 }
+
+#[contract]
+pub struct MockResolver;
+
+#[contracttype]
+pub enum MockResolverKey {
+    ApproveAttest,
+    ApproveRevoke,
+}
+
+#[contractimpl]
+impl MockResolver {
+    pub fn init(env: Env, approve_attest: bool, approve_revoke: bool) {
+        env.storage()
+            .instance()
+            .set(&MockResolverKey::ApproveAttest, &approve_attest);
+        env.storage()
+            .instance()
+            .set(&MockResolverKey::ApproveRevoke, &approve_revoke);
+    }
+
+    pub fn set_approve_attest(env: Env, approve: bool) {
+        env.storage()
+            .instance()
+            .set(&MockResolverKey::ApproveAttest, &approve);
+    }
+
+    pub fn set_approve_revoke(env: Env, approve: bool) {
+        env.storage()
+            .instance()
+            .set(&MockResolverKey::ApproveRevoke, &approve);
+    }
+
+    pub fn on_attest(env: Env, _attestation: Attestation) -> bool {
+        env.storage()
+            .instance()
+            .get(&MockResolverKey::ApproveAttest)
+            .unwrap_or(true)
+    }
+
+    pub fn on_revoke(env: Env, _attestation: Attestation) -> bool {
+        env.storage()
+            .instance()
+            .get(&MockResolverKey::ApproveRevoke)
+            .unwrap_or(true)
+    }
+}
+
+#[test]
+fn resolver_approval_allows_attest_and_revoke() {
+    let f = setup();
+    let resolver_id = f.env.register(MockResolver, ());
+    let resolver_client = MockResolverClient::new(&f.env, &resolver_id);
+    resolver_client.init(&true, &true);
+
+    let schema_uid = f.registry.register_schema(
+        &f.authority,
+        &symbol_short!("resolved"),
+        &String::from_str(&f.env, "string note"),
+        &true,
+        &Some(resolver_id),
+    );
+
+    let uid = f.att.attest(
+        &f.issuer,
+        &schema_uid,
+        &f.subject,
+        &data(&f.env),
+        &None,
+        &None,
+    );
+    assert!(f.att.is_valid(&uid));
+
+    f.att.revoke(&f.issuer, &uid);
+    assert!(!f.att.is_valid(&uid));
+    let rec = f.att.get_attestation(&uid).unwrap();
+    assert!(rec.revoked);
+}
+
+#[test]
+fn resolver_rejection_on_attest_fails() {
+    let f = setup();
+    let resolver_id = f.env.register(MockResolver, ());
+    let resolver_client = MockResolverClient::new(&f.env, &resolver_id);
+    resolver_client.init(&false, &true);
+
+    let schema_uid = f.registry.register_schema(
+        &f.authority,
+        &symbol_short!("reject1"),
+        &String::from_str(&f.env, "string note"),
+        &true,
+        &Some(resolver_id),
+    );
+
+    let res = f.att.try_attest(
+        &f.issuer,
+        &schema_uid,
+        &f.subject,
+        &data(&f.env),
+        &None,
+        &None,
+    );
+    assert_eq!(res, Err(Ok(Error::ResolverRejected)));
+}
+
+#[test]
+fn resolver_rejection_on_revoke_fails() {
+    let f = setup();
+    let resolver_id = f.env.register(MockResolver, ());
+    let resolver_client = MockResolverClient::new(&f.env, &resolver_id);
+    resolver_client.init(&true, &false);
+
+    let schema_uid = f.registry.register_schema(
+        &f.authority,
+        &symbol_short!("reject2"),
+        &String::from_str(&f.env, "string note"),
+        &true,
+        &Some(resolver_id),
+    );
+
+    let uid = f.att.attest(
+        &f.issuer,
+        &schema_uid,
+        &f.subject,
+        &data(&f.env),
+        &None,
+        &None,
+    );
+    assert!(f.att.is_valid(&uid));
+
+    let res = f.att.try_revoke(&f.issuer, &uid);
+    assert_eq!(res, Err(Ok(Error::ResolverRejected)));
+    // Attestation must remain unrevoked and valid
+    assert!(f.att.is_valid(&uid));
+    let rec = f.att.get_attestation(&uid).unwrap();
+    assert!(!rec.revoked);
+}
+
+#[test]
+fn resolver_rejection_in_batch_reverts_entire_batch() {
+    let f = setup();
+    let resolver_id = f.env.register(MockResolver, ());
+    let resolver_client = MockResolverClient::new(&f.env, &resolver_id);
+    resolver_client.init(&false, &true);
+
+    let resolved_schema = f.registry.register_schema(
+        &f.authority,
+        &symbol_short!("resolv"),
+        &String::from_str(&f.env, "string note"),
+        &true,
+        &Some(resolver_id),
+    );
+    let open_schema = register_schema(&f, true);
+
+    let mut inputs = Vec::new(&f.env);
+    inputs.push_back(AttestInput {
+        schema_uid: open_schema.clone(),
+        subject: f.subject.clone(),
+        data: data(&f.env),
+        expiration: None,
+        ref_uid: None,
+    });
+    inputs.push_back(AttestInput {
+        schema_uid: resolved_schema.clone(),
+        subject: f.subject.clone(),
+        data: data(&f.env),
+        expiration: None,
+        ref_uid: None,
+    });
+
+    let res = f.att.try_attest_batch(&f.issuer, &inputs);
+    assert_eq!(res, Err(Ok(Error::ResolverRejected)));
+
+    // Ensure zero records were created and counts untouched
+    assert_eq!(f.att.schema_attestation_count(&open_schema), 0);
+    assert_eq!(f.att.schema_attestation_count(&resolved_schema), 0);
+    assert_eq!(f.att.attestations_for_subject(&f.subject).len(), 0);
+}
+
+#[test]
+fn authorized_signer_configuration_lifecycle() {
+    let f = setup();
+
+    assert_eq!(f.att.get_authorized_signer(&f.issuer), None);
+    assert_eq!(f.att.get_nonce(&f.issuer), 0);
+
+    let signer = BytesN::from_array(&f.env, &[77u8; 32]);
+    f.att.set_authorized_signer(&f.issuer, &signer);
+
+    // Check SignerSet event immediately after invocation
+    let events = f.env.events().all();
+    let contract_events = events.filter_by_contract(&f.att.address);
+    assert_eq!(contract_events.events().len(), 1);
+
+    assert_eq!(f.att.get_authorized_signer(&f.issuer), Some(signer));
+
+    // Clear signer
+    f.att.clear_authorized_signer(&f.issuer);
+
+    // Check SignerCleared event immediately after invocation
+    let events = f.env.events().all();
+    let contract_events = events.filter_by_contract(&f.att.address);
+    assert_eq!(contract_events.events().len(), 1);
+
+    assert_eq!(f.att.get_authorized_signer(&f.issuer), None);
+}
+
+#[test]
+fn attest_delegated_valid_signature_succeeds() {
+    use ed25519_dalek::{Signer as _, SigningKey};
+
+    let f = setup();
+    let schema_uid = register_schema(&f, true);
+
+    let signing_key = SigningKey::from_bytes(&[15u8; 32]);
+    let verifying_key = signing_key.verifying_key();
+    let signer = BytesN::from_array(&f.env, &verifying_key.to_bytes());
+
+    f.att.set_authorized_signer(&f.issuer, &signer);
+
+    let input = AttestInput {
+        schema_uid: schema_uid.clone(),
+        subject: f.subject.clone(),
+        data: data(&f.env),
+        expiration: None,
+        ref_uid: None,
+    };
+
+    let nonce = f.att.get_nonce(&f.issuer);
+    let deadline = f.env.ledger().timestamp() + 3_600;
+
+    let payload = f
+        .att
+        .delegated_attestation_payload(&f.issuer, &input, &nonce, &deadline);
+
+    let mut payload_bytes = [0u8; 4096];
+    let payload_len = payload.len() as usize;
+    payload.copy_into_slice(&mut payload_bytes[..payload_len]);
+    let signature_raw = signing_key.sign(&payload_bytes[..payload_len]);
+    let signature = BytesN::from_array(&f.env, &signature_raw.to_bytes());
+
+    let uid = f
+        .att
+        .attest_delegated(&f.issuer, &input, &deadline, &signature);
+
+    assert!(f.att.is_valid(&uid));
+    let rec = f.att.get_attestation(&uid).unwrap();
+    assert_eq!(rec.issuer, f.issuer);
+    assert_eq!(rec.subject, f.subject);
+    assert_eq!(rec.schema_uid, schema_uid);
+
+    // Nonce must have advanced from 0 to 1
+    assert_eq!(f.att.get_nonce(&f.issuer), 1);
+    assert_eq!(f.att.schema_attestation_count(&schema_uid), 1);
+}
+
+#[test]
+fn attest_delegated_unconfigured_signer_rejected() {
+    let f = setup();
+    let schema_uid = register_schema(&f, true);
+
+    let input = AttestInput {
+        schema_uid,
+        subject: f.subject.clone(),
+        data: data(&f.env),
+        expiration: None,
+        ref_uid: None,
+    };
+
+    let deadline = f.env.ledger().timestamp() + 1_000;
+    let fake_sig = BytesN::from_array(&f.env, &[0u8; 64]);
+
+    let res = f
+        .att
+        .try_attest_delegated(&f.issuer, &input, &deadline, &fake_sig);
+    assert_eq!(res, Err(Ok(Error::SignerNotConfigured)));
+}
+
+#[test]
+fn attest_delegated_expired_deadline_rejected() {
+    let f = setup();
+    let schema_uid = register_schema(&f, true);
+
+    let input = AttestInput {
+        schema_uid,
+        subject: f.subject.clone(),
+        data: data(&f.env),
+        expiration: None,
+        ref_uid: None,
+    };
+
+    f.env.ledger().set_timestamp(1_000);
+    let expired_deadline = 999;
+    let fake_sig = BytesN::from_array(&f.env, &[0u8; 64]);
+
+    let res = f
+        .att
+        .try_attest_delegated(&f.issuer, &input, &expired_deadline, &fake_sig);
+    assert_eq!(res, Err(Ok(Error::DeadlineExceeded)));
+}
+
+#[test]
+#[should_panic]
+fn attest_delegated_invalid_signature_panics() {
+    use ed25519_dalek::{Signer as _, SigningKey};
+
+    let f = setup();
+    let schema_uid = register_schema(&f, true);
+
+    let signing_key = SigningKey::from_bytes(&[21u8; 32]);
+    let verifying_key = signing_key.verifying_key();
+    let signer = BytesN::from_array(&f.env, &verifying_key.to_bytes());
+    f.att.set_authorized_signer(&f.issuer, &signer);
+
+    let input = AttestInput {
+        schema_uid,
+        subject: f.subject.clone(),
+        data: data(&f.env),
+        expiration: None,
+        ref_uid: None,
+    };
+
+    let deadline = f.env.ledger().timestamp() + 3_600;
+
+    let wrong_key = SigningKey::from_bytes(&[99u8; 32]);
+    let wrong_sig = wrong_key.sign(b"wrong payload");
+    let signature = BytesN::from_array(&f.env, &wrong_sig.to_bytes());
+
+    f.att
+        .attest_delegated(&f.issuer, &input, &deadline, &signature);
+}
+
+#[test]
+#[should_panic]
+fn attest_delegated_replay_attempt_panics() {
+    use ed25519_dalek::{Signer as _, SigningKey};
+
+    let f = setup();
+    let schema_uid = register_schema(&f, true);
+
+    let signing_key = SigningKey::from_bytes(&[33u8; 32]);
+    let verifying_key = signing_key.verifying_key();
+    let signer = BytesN::from_array(&f.env, &verifying_key.to_bytes());
+    f.att.set_authorized_signer(&f.issuer, &signer);
+
+    let input = AttestInput {
+        schema_uid,
+        subject: f.subject.clone(),
+        data: data(&f.env),
+        expiration: None,
+        ref_uid: None,
+    };
+
+    let nonce = f.att.get_nonce(&f.issuer);
+    let deadline = f.env.ledger().timestamp() + 3_600;
+
+    let payload = f
+        .att
+        .delegated_attestation_payload(&f.issuer, &input, &nonce, &deadline);
+
+    let mut payload_bytes = [0u8; 4096];
+    let payload_len = payload.len() as usize;
+    payload.copy_into_slice(&mut payload_bytes[..payload_len]);
+    let signature_raw = signing_key.sign(&payload_bytes[..payload_len]);
+    let signature = BytesN::from_array(&f.env, &signature_raw.to_bytes());
+
+    // First submission succeeds
+    let _uid = f
+        .att
+        .attest_delegated(&f.issuer, &input, &deadline, &signature);
+
+    // Replay submission with same signature must panic as nonce advanced
+    f.att
+        .attest_delegated(&f.issuer, &input, &deadline, &signature);
+}

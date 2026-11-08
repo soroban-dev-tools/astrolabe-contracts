@@ -185,6 +185,7 @@ name = "astrolabe-attestation"
 version = "0.1.0"
 dependencies = [
  "astrolabe-schema-registry",
+ "ed25519-dalek",
  "soroban-sdk",
 ]
 
