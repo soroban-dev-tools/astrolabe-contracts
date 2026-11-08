@@ -40,9 +40,10 @@ authorisation check must state which item here it affects.
 | T11 | Forged delegated attestation signature spoofing issuer. | `attest_delegated` verifies Ed25519 signatures with `env.crypto().ed25519_verify` against the issuer's pre-configured signer key in `DataKey::Signer(issuer)`. |
 | T12 | Replay of delegated attestation signatures. | The signed payload binds the issuer's current monotonic nonce and a timestamp deadline. Nonce increments upon successful issuance, invalidating replayed signatures. Expired deadlines revert with `DeadlineExceeded`. |
 | T13 | Compromised off-chain delegated key continues issuing. | Issuers can revoke their signing key at any time via `clear_authorized_signer(issuer)`, immediately preventing any further delegated attestations from being submitted. |
+| T14 | Replay or acceptance of an off-chain attestation revoked by hash. | `verify_offchain` checks `is_revoked_offchain` before returning true; revoked hashes evaluate to false. |
+| T15 | Unauthorized caller revokes off-chain payload hash. | `revoke_offchain` calls `issuer.require_auth()`, ensuring only the authentic issuer can record an on-chain revocation of their payload hash. |
 
 ## Out of scope for v0.1
 
-- **Off-chain hash revocation.** The protocol supports on-chain revocation of attestations. Off-chain payload hash revocation is scheduled for subsequent hardening.
 - **Economic abuse.** Spam issuance is bounded per entry but not rate limited. Rate limiting, if wanted, belongs in a custom schema resolver.
 - **Mainnet.** The contracts are Testnet-only until the README states otherwise.
