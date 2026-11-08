@@ -124,6 +124,15 @@ delegated_attestation_payload(
 ) -> Bytes
 
 revoke(issuer: Address, attestation_uid: BytesN<32>)
+revoke_offchain(issuer: Address, payload_hash: BytesN<32>)  // requires issuer auth
+is_revoked_offchain(payload_hash: BytesN<32>) -> bool
+get_offchain_revocation(payload_hash: BytesN<32>) -> Option<u64>
+verify_offchain(
+    issuer: Address,
+    payload_hash: BytesN<32>,
+    signature: BytesN<64>
+) -> Result<bool, Error>
+
 get_attestation(attestation_uid: BytesN<32>) -> Option<Attestation>
 is_valid(attestation_uid: BytesN<32>) -> bool
 attestations_for_subject(subject: Address) -> Vec<BytesN<32>>
@@ -299,6 +308,14 @@ Issuers can authorize off-chain signing keys to produce attestations without sub
    `sha256(xdr("attest_del") || xdr(issuer) || xdr(schema_uid) || xdr(subject) || xdr(data) || xdr(expiration) || xdr(ref_uid) || xdr(nonce) || xdr(deadline))`
 3. Any relayer calls `attest_delegated(issuer, input, deadline, signature)`.
 4. The contract verifies the Ed25519 signature, advances `Nonce(issuer)`, checks the deadline, and writes the attestation record.
+
+## 6. Off-chain attestations and revocation by hash
+
+Off-chain attestations may be issued and exchanged entirely off chain without on-chain gas costs:
+- Issuers sign the 32-byte payload hash or attestation UID using their authorized Ed25519 key.
+- Consumers can verify authenticity and revocation status on chain via `verify_offchain(issuer, payload_hash, signature)`.
+- Issuers can revoke an off-chain attestation before expiry via `revoke_offchain(issuer, payload_hash)`.
+- `is_revoked_offchain(payload_hash)` returns whether an off-chain attestation has been explicitly revoked on chain.
 
 ## 7. Worked example
 

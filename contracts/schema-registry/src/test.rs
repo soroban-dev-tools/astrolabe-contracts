@@ -204,3 +204,32 @@ fn schema_uid_regression_golden_value() {
     );
     assert_eq!(uid, expected);
 }
+
+#[test]
+#[should_panic]
+fn register_schema_without_auth_panics() {
+    let env = Env::default();
+    let contract_id = env.register(SchemaRegistry, ());
+    let client = SchemaRegistryClient::new(&env, &contract_id);
+    let authority = Address::generate(&env);
+
+    client.register_schema(
+        &authority,
+        &symbol_short!("no_auth"),
+        &String::from_str(&env, "string note"),
+        &true,
+        &None,
+    );
+}
+
+#[test]
+fn register_schema_with_empty_definition_succeeds() {
+    let (env, client, authority) = setup();
+    let name = symbol_short!("empty");
+    let empty_def = String::from_str(&env, "");
+
+    let uid = client.register_schema(&authority, &name, &empty_def, &false, &None);
+    let schema = client.get_schema(&uid).expect("schema exists");
+    assert_eq!(schema.definition, empty_def);
+    assert!(!schema.revocable);
+}

@@ -98,6 +98,7 @@ enum DataKey {
     Nonce(Address),
     SchemaCount(BytesN<32>),
     Signer(Address),
+    OffchainRevocation(BytesN<32>),
 }
 
 #[contracttype]
@@ -146,6 +147,17 @@ pub struct SignerSet {
 pub struct SignerCleared {
     #[topic]
     pub issuer: Address,
+}
+
+/// Emitted on every successful off-chain revocation.
+#[contractevent(topics = ["offchain_rev"])]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct OffchainRevoked {
+    #[topic]
+    pub issuer: Address,
+    #[topic]
+    pub payload_hash: BytesN<32>,
+    pub revocation_time: u64,
 }
 
 /// Derive the attestation uid, matching `docs/protocol.md` section 3.3.
@@ -370,6 +382,97 @@ impl AttestationContract {
         .publish(&env);
 
         Ok(())
+    }
+
+    /// Revoke an off-chain attestation by its payload hash or UID.
+    ///
+    /// Requires issuer authentication. Once revoked, `is_revoked_offchain`
+    /// returns true and `verify_offchain` returns false.
+    ///
+    /// # Errors
+    ///
+    /// - Returns `Error::AlreadyRevoked` if the payload hash is already revoked.
+    pub fn revoke_offchain(
+        env: Env,
+        issuer: Address,
+        payload_hash: BytesN<32>,
+    ) -> Result<(), Error> {
+        issuer.require_auth();
+
+        let key = DataKey::OffchainRevocation(payload_hash.clone());
+        if env.storage().persistent().has(&key) {
+            return Err(Error::AlreadyRevoked);
+        }
+
+        let now = env.ledger().timestamp();
+        env.storage().persistent().set(&key, &now);
+        env.storage()
+            .persistent()
+            .extend_ttl(&key, TTL_THRESHOLD, TTL_EXTEND);
+
+        OffchainRevoked {
+            issuer,
+            payload_hash,
+            revocation_time: now,
+        }
+        .publish(&env);
+
+        Ok(())
+    }
+
+    /// Check whether an off-chain attestation payload hash has been revoked.
+    pub fn is_revoked_offchain(env: Env, payload_hash: BytesN<32>) -> bool {
+        let key = DataKey::OffchainRevocation(payload_hash);
+        let exists = env.storage().persistent().has(&key);
+        if exists {
+            env.storage()
+                .persistent()
+                .extend_ttl(&key, TTL_THRESHOLD, TTL_EXTEND);
+        }
+        exists
+    }
+
+    /// Read the revocation timestamp of an off-chain attestation, if revoked.
+    pub fn get_offchain_revocation(env: Env, payload_hash: BytesN<32>) -> Option<u64> {
+        let key = DataKey::OffchainRevocation(payload_hash);
+        let time = env.storage().persistent().get(&key);
+        if time.is_some() {
+            env.storage()
+                .persistent()
+                .extend_ttl(&key, TTL_THRESHOLD, TTL_EXTEND);
+        }
+        time
+    }
+
+    /// Verify an off-chain attestation signature and check for on-chain revocation.
+    ///
+    /// Returns `true` if the issuer has an authorized signer configured, the signature
+    /// is valid over the 32-byte payload hash, and the payload hash has NOT been revoked.
+    /// Returns `false` if the payload hash is revoked.
+    ///
+    /// # Errors
+    ///
+    /// - Returns `Error::SignerNotConfigured` if the issuer has no authorized signer.
+    pub fn verify_offchain(
+        env: Env,
+        issuer: Address,
+        payload_hash: BytesN<32>,
+        signature: BytesN<64>,
+    ) -> Result<bool, Error> {
+        if Self::is_revoked_offchain(env.clone(), payload_hash.clone()) {
+            return Ok(false);
+        }
+
+        let signer = env
+            .storage()
+            .persistent()
+            .get::<_, BytesN<32>>(&DataKey::Signer(issuer))
+            .ok_or(Error::SignerNotConfigured)?;
+
+        let msg_bytes = Bytes::from(payload_hash);
+        env.crypto().ed25519_verify(&signer, &msg_bytes, &signature);
+
+        Ok(true)
     }
 
     /// Read an attestation by uid. Extends its TTL on a hit.

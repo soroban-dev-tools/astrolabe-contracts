@@ -1255,3 +1255,135 @@ fn attest_delegated_replay_attempt_panics() {
     f.att
         .attest_delegated(&f.issuer, &input, &deadline, &signature);
 }
+
+#[test]
+fn offchain_revocation_lifecycle() {
+    let f = setup();
+    let hash = BytesN::from_array(&f.env, &[88u8; 32]);
+
+    assert!(!f.att.is_revoked_offchain(&hash));
+    assert_eq!(f.att.get_offchain_revocation(&hash), None);
+
+    f.env.ledger().set_timestamp(42_000);
+    f.att.revoke_offchain(&f.issuer, &hash);
+
+    // Event emitted immediately
+    let events = f.env.events().all();
+    let contract_events = events.filter_by_contract(&f.att.address);
+    assert_eq!(contract_events.events().len(), 1);
+
+    assert!(f.att.is_revoked_offchain(&hash));
+    assert_eq!(f.att.get_offchain_revocation(&hash), Some(42_000));
+
+    // Double revocation fails
+    let res = f.att.try_revoke_offchain(&f.issuer, &hash);
+    assert_eq!(res, Err(Ok(Error::AlreadyRevoked)));
+}
+
+#[test]
+fn verify_offchain_valid_signature_and_revocation_states() {
+    use ed25519_dalek::{Signer as _, SigningKey};
+
+    let f = setup();
+    let hash = BytesN::from_array(&f.env, &[71u8; 32]);
+    let fake_sig = BytesN::from_array(&f.env, &[0u8; 64]);
+
+    // 1. Unconfigured signer returns SignerNotConfigured
+    let res = f.att.try_verify_offchain(&f.issuer, &hash, &fake_sig);
+    assert_eq!(res, Err(Ok(Error::SignerNotConfigured)));
+
+    // 2. Configure signer
+    let signing_key = SigningKey::from_bytes(&[55u8; 32]);
+    let verifying_key = signing_key.verifying_key();
+    let signer = BytesN::from_array(&f.env, &verifying_key.to_bytes());
+    f.att.set_authorized_signer(&f.issuer, &signer);
+
+    // 3. Sign the 32-byte payload hash
+    let sig_raw = signing_key.sign(&hash.to_array());
+    let sig = BytesN::from_array(&f.env, &sig_raw.to_bytes());
+
+    // 4. Verify valid unrevoked signature returns Ok(true)
+    let res = f.att.verify_offchain(&f.issuer, &hash, &sig);
+    assert!(res);
+
+    // 5. Revoke the hash on-chain
+    f.att.revoke_offchain(&f.issuer, &hash);
+
+    // 6. Verify revoked hash returns Ok(false)
+    let res = f.att.verify_offchain(&f.issuer, &hash, &sig);
+    assert!(!res);
+}
+
+#[test]
+#[should_panic]
+fn verify_offchain_invalid_signature_panics() {
+    use ed25519_dalek::{Signer as _, SigningKey};
+
+    let f = setup();
+    let hash = BytesN::from_array(&f.env, &[71u8; 32]);
+
+    let signing_key = SigningKey::from_bytes(&[55u8; 32]);
+    let verifying_key = signing_key.verifying_key();
+    let signer = BytesN::from_array(&f.env, &verifying_key.to_bytes());
+    f.att.set_authorized_signer(&f.issuer, &signer);
+
+    let wrong_key = SigningKey::from_bytes(&[66u8; 32]);
+    let sig_raw = wrong_key.sign(&hash.to_array());
+    let bad_sig = BytesN::from_array(&f.env, &sig_raw.to_bytes());
+
+    let _ = f.att.verify_offchain(&f.issuer, &hash, &bad_sig);
+}
+
+#[test]
+fn attest_boundary_data_length_and_expiration_limits() {
+    let f = setup();
+    let schema_uid = register_schema(&f, true);
+
+    // 1. Exactly MAX_DATA_LEN (1024) is accepted
+    let max_data = Bytes::from_array(&f.env, &[7u8; MAX_DATA_LEN as usize]);
+    let uid_max = f
+        .att
+        .attest(&f.issuer, &schema_uid, &f.subject, &max_data, &None, &None);
+    assert!(f.att.is_valid(&uid_max));
+    let rec = f.att.get_attestation(&uid_max).unwrap();
+    assert_eq!(rec.data.len(), MAX_DATA_LEN);
+
+    // 2. Empty data (0 bytes) is accepted
+    let empty_data = Bytes::new(&f.env);
+    let uid_empty = f.att.attest(
+        &f.issuer,
+        &schema_uid,
+        &f.subject,
+        &empty_data,
+        &None,
+        &None,
+    );
+    assert!(f.att.is_valid(&uid_empty));
+    let rec_empty = f.att.get_attestation(&uid_empty).unwrap();
+    assert_eq!(rec_empty.data.len(), 0);
+
+    // 3. Exactly now + 1 is accepted
+    let now = f.env.ledger().timestamp();
+    let uid_now_plus_1 = f.att.attest(
+        &f.issuer,
+        &schema_uid,
+        &f.subject,
+        &data(&f.env),
+        &Some(now + 1),
+        &None,
+    );
+    assert!(f.att.is_valid(&uid_now_plus_1));
+
+    // 4. u64::MAX expiration is accepted and remains valid
+    let uid_max_exp = f.att.attest(
+        &f.issuer,
+        &schema_uid,
+        &f.subject,
+        &data(&f.env),
+        &Some(u64::MAX),
+        &None,
+    );
+    assert!(f.att.is_valid(&uid_max_exp));
+    let rec_max_exp = f.att.get_attestation(&uid_max_exp).unwrap();
+    assert_eq!(rec_max_exp.expiration, Some(u64::MAX));
+}
