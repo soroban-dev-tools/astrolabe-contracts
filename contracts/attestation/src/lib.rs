@@ -384,6 +384,66 @@ impl AttestationContract {
         Ok(())
     }
 
+    /// Revoke an off-chain attestation by its payload hash or UID.
+    ///
+    /// Requires issuer authentication. Once revoked, `is_revoked_offchain`
+    /// returns true and `verify_offchain` returns false.
+    ///
+    /// # Errors
+    ///
+    /// - Returns `Error::AlreadyRevoked` if the payload hash is already revoked.
+    pub fn revoke_offchain(
+        env: Env,
+        issuer: Address,
+        payload_hash: BytesN<32>,
+    ) -> Result<(), Error> {
+        issuer.require_auth();
+
+        let key = DataKey::OffchainRevocation(payload_hash.clone());
+        if env.storage().persistent().has(&key) {
+            return Err(Error::AlreadyRevoked);
+        }
+
+        let now = env.ledger().timestamp();
+        env.storage().persistent().set(&key, &now);
+        env.storage()
+            .persistent()
+            .extend_ttl(&key, TTL_THRESHOLD, TTL_EXTEND);
+
+        OffchainRevoked {
+            issuer,
+            payload_hash,
+            revocation_time: now,
+        }
+        .publish(&env);
+
+        Ok(())
+    }
+
+    /// Check whether an off-chain attestation payload hash has been revoked.
+    pub fn is_revoked_offchain(env: Env, payload_hash: BytesN<32>) -> bool {
+        let key = DataKey::OffchainRevocation(payload_hash);
+        let exists = env.storage().persistent().has(&key);
+        if exists {
+            env.storage()
+                .persistent()
+                .extend_ttl(&key, TTL_THRESHOLD, TTL_EXTEND);
+        }
+        exists
+    }
+
+    /// Read the revocation timestamp of an off-chain attestation, if revoked.
+    pub fn get_offchain_revocation(env: Env, payload_hash: BytesN<32>) -> Option<u64> {
+        let key = DataKey::OffchainRevocation(payload_hash);
+        let time = env.storage().persistent().get(&key);
+        if time.is_some() {
+            env.storage()
+                .persistent()
+                .extend_ttl(&key, TTL_THRESHOLD, TTL_EXTEND);
+        }
+        time
+    }
+
     /// Read an attestation by uid. Extends its TTL on a hit.
     pub fn get_attestation(env: Env, attestation_uid: BytesN<32>) -> Option<Attestation> {
         let key = DataKey::Attestation(attestation_uid);
