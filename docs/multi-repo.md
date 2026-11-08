@@ -110,7 +110,7 @@ Protocol repositories:
 cargo fmt --check
 cargo clippy --all-targets -- -D warnings
 cargo test
-cargo build --target wasm32-unknown-unknown --release
+cargo build --target wasm32v1-none --release
 ```
 
 SDK and application repositories:
