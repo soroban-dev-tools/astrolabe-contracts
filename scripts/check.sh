@@ -23,4 +23,7 @@ cargo test --all
 echo "==> Building release WASM artifacts"
 cargo build --target wasm32v1-none --release
 
+echo "==> Verifying compiled WASM contract sizes"
+ls -lh target/wasm32v1-none/release/*.wasm
+
 echo "==> All checks passed cleanly"
