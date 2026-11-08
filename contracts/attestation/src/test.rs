@@ -1387,3 +1387,96 @@ fn attest_boundary_data_length_and_expiration_limits() {
     let rec_max_exp = f.att.get_attestation(&uid_max_exp).unwrap();
     assert_eq!(rec_max_exp.expiration, Some(u64::MAX));
 }
+
+#[test]
+fn end_to_end_protocol_lifecycle() {
+    use ed25519_dalek::{Signer as _, SigningKey};
+
+    let f = setup();
+
+    // 1. Authority registers a revocable schema with resolver
+    let resolver_id = f.env.register(MockResolver, ());
+    let resolver_client = MockResolverClient::new(&f.env, &resolver_id);
+    resolver_client.init(&true, &true);
+
+    let schema_uid = f.registry.register_schema(
+        &f.authority,
+        &symbol_short!("e2e_sch"),
+        &String::from_str(&f.env, "string title,u32 score"),
+        &true,
+        &Some(resolver_id),
+    );
+
+    // 2. Issuer configures authorized signer
+    let signing_key = SigningKey::from_bytes(&[123u8; 32]);
+    let verifying_key = signing_key.verifying_key();
+    let signer = BytesN::from_array(&f.env, &verifying_key.to_bytes());
+    f.att.set_authorized_signer(&f.issuer, &signer);
+    assert_eq!(f.att.get_authorized_signer(&f.issuer), Some(signer));
+
+    // 3. Issuer creates atomic batch of 2 attestations
+    let mut inputs = Vec::new(&f.env);
+    inputs.push_back(AttestInput {
+        schema_uid: schema_uid.clone(),
+        subject: f.subject.clone(),
+        data: data(&f.env),
+        expiration: None,
+        ref_uid: None,
+    });
+    inputs.push_back(AttestInput {
+        schema_uid: schema_uid.clone(),
+        subject: f.subject.clone(),
+        data: data(&f.env),
+        expiration: None,
+        ref_uid: None,
+    });
+    let batch_uids = f.att.attest_batch(&f.issuer, &inputs);
+    assert_eq!(batch_uids.len(), 2);
+    let att1_uid = batch_uids.get(0).unwrap();
+    assert!(f.att.is_valid(&att1_uid));
+    assert_eq!(f.att.get_nonce(&f.issuer), 2);
+
+    // 4. Delegated attestation submission by relayer
+    let nonce = f.att.get_nonce(&f.issuer);
+    let deadline = f.env.ledger().timestamp() + 3_600;
+    let del_input = AttestInput {
+        schema_uid: schema_uid.clone(),
+        subject: f.subject.clone(),
+        data: data(&f.env),
+        expiration: None,
+        ref_uid: Some(att1_uid.clone()),
+    };
+    let payload = f
+        .att
+        .delegated_attestation_payload(&f.issuer, &del_input, &nonce, &deadline);
+
+    let mut payload_bytes = [0u8; 4096];
+    let payload_len = payload.len() as usize;
+    payload.copy_into_slice(&mut payload_bytes[..payload_len]);
+    let sig_raw = signing_key.sign(&payload_bytes[..payload_len]);
+    let sig = BytesN::from_array(&f.env, &sig_raw.to_bytes());
+
+    let del_uid = f
+        .att
+        .attest_delegated(&f.issuer, &del_input, &deadline, &sig);
+    assert!(f.att.is_valid(&del_uid));
+    assert_eq!(f.att.get_nonce(&f.issuer), 3);
+    assert_eq!(f.att.schema_attestation_count(&schema_uid), 3);
+
+    // 5. On-chain revocation with resolver approval
+    f.att.revoke(&f.issuer, &att1_uid);
+    assert!(!f.att.is_valid(&att1_uid));
+
+    // 6. Off-chain attestation verification & revocation
+    let offchain_hash = BytesN::from_array(&f.env, &[99u8; 32]);
+    let offchain_sig_raw = signing_key.sign(&offchain_hash.to_array());
+    let offchain_sig = BytesN::from_array(&f.env, &offchain_sig_raw.to_bytes());
+
+    assert!(f
+        .att
+        .verify_offchain(&f.issuer, &offchain_hash, &offchain_sig));
+    f.att.revoke_offchain(&f.issuer, &offchain_hash);
+    assert!(!f
+        .att
+        .verify_offchain(&f.issuer, &offchain_hash, &offchain_sig));
+}
