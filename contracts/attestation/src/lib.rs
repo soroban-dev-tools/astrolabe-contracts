@@ -429,6 +429,45 @@ impl AttestationContract {
         signer
     }
 
+    /// Return the current nonce for an issuer.
+    pub fn get_nonce(env: Env, issuer: Address) -> u64 {
+        env.storage()
+            .persistent()
+            .get(&DataKey::Nonce(issuer))
+            .unwrap_or(0)
+    }
+
+    /// Format the canonical preimage payload for an off-chain delegated attestation signature.
+    pub fn delegated_attestation_payload(
+        env: Env,
+        issuer: Address,
+        input: AttestInput,
+        nonce: u64,
+        deadline: u64,
+    ) -> Bytes {
+        Self::compute_delegated_payload(&env, &issuer, &input, nonce, deadline)
+    }
+
+    fn compute_delegated_payload(
+        env: &Env,
+        issuer: &Address,
+        input: &AttestInput,
+        nonce: u64,
+        deadline: u64,
+    ) -> Bytes {
+        let mut buf = Bytes::new(env);
+        buf.append(&Symbol::new(env, "attest_del").to_xdr(env));
+        buf.append(&issuer.to_xdr(env));
+        buf.append(&(&input.schema_uid).to_xdr(env));
+        buf.append(&(&input.subject).to_xdr(env));
+        buf.append(&(&input.data).to_xdr(env));
+        buf.append(&input.expiration.to_xdr(env));
+        buf.append(&(&input.ref_uid).to_xdr(env));
+        buf.append(&nonce.to_xdr(env));
+        buf.append(&deadline.to_xdr(env));
+        buf
+    }
+
     /// Check every attestation precondition that does not depend on the issuer.
     /// Returns the schema so callers can reuse it without a second registry call.
     fn validate_input(env: &Env, input: &AttestInput, now: u64) -> Result<SchemaView, Error> {
