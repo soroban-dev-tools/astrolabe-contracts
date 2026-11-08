@@ -48,6 +48,7 @@ pub enum Error {
     NotInitialized = 7,
     ExpirationInPast = 8,
     RefNotFound = 9,
+    ResolverRejected = 10,
 }
 
 /// One attestation. Stored under its uid in persistent storage.
@@ -483,4 +484,5 @@ impl AttestationContract {
     }
 }
 
+pub mod resolver;
 mod test;
