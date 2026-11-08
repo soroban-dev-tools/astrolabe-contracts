@@ -10,6 +10,8 @@ version = "0.1.0"
 edition = "2021"
 license = "Apache-2.0"
 repository = "https://github.com/soroban-dev-tools/astrolabe-contracts"
+documentation = "https://github.com/soroban-dev-tools/astrolabe-contracts/tree/main/docs"
+readme = "README.md"
 rust-version = "1.91"
 
 [workspace.dependencies]
