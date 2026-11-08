@@ -880,3 +880,181 @@ fn attest_batch_multi_schema_multi_subject_and_empty() {
     assert!(index_1.contains(uids.get(1).unwrap()));
     assert!(index_2.contains(uids.get(2).unwrap()));
 }
+
+#[contract]
+pub struct MockResolver;
+
+#[contracttype]
+pub enum MockResolverKey {
+    ApproveAttest,
+    ApproveRevoke,
+}
+
+#[contractimpl]
+impl MockResolver {
+    pub fn init(env: Env, approve_attest: bool, approve_revoke: bool) {
+        env.storage()
+            .instance()
+            .set(&MockResolverKey::ApproveAttest, &approve_attest);
+        env.storage()
+            .instance()
+            .set(&MockResolverKey::ApproveRevoke, &approve_revoke);
+    }
+
+    pub fn set_approve_attest(env: Env, approve: bool) {
+        env.storage()
+            .instance()
+            .set(&MockResolverKey::ApproveAttest, &approve);
+    }
+
+    pub fn set_approve_revoke(env: Env, approve: bool) {
+        env.storage()
+            .instance()
+            .set(&MockResolverKey::ApproveRevoke, &approve);
+    }
+
+    pub fn on_attest(env: Env, _attestation: Attestation) -> bool {
+        env.storage()
+            .instance()
+            .get(&MockResolverKey::ApproveAttest)
+            .unwrap_or(true)
+    }
+
+    pub fn on_revoke(env: Env, _attestation: Attestation) -> bool {
+        env.storage()
+            .instance()
+            .get(&MockResolverKey::ApproveRevoke)
+            .unwrap_or(true)
+    }
+}
+
+#[test]
+fn resolver_approval_allows_attest_and_revoke() {
+    let f = setup();
+    let resolver_id = f.env.register(MockResolver, ());
+    let resolver_client = MockResolverClient::new(&f.env, &resolver_id);
+    resolver_client.init(&true, &true);
+
+    let schema_uid = f.registry.register_schema(
+        &f.authority,
+        &symbol_short!("resolved"),
+        &String::from_str(&f.env, "string note"),
+        &true,
+        &Some(resolver_id),
+    );
+
+    let uid = f.att.attest(
+        &f.issuer,
+        &schema_uid,
+        &f.subject,
+        &data(&f.env),
+        &None,
+        &None,
+    );
+    assert!(f.att.is_valid(&uid));
+
+    f.att.revoke(&f.issuer, &uid);
+    assert!(!f.att.is_valid(&uid));
+    let rec = f.att.get_attestation(&uid).unwrap();
+    assert!(rec.revoked);
+}
+
+#[test]
+fn resolver_rejection_on_attest_fails() {
+    let f = setup();
+    let resolver_id = f.env.register(MockResolver, ());
+    let resolver_client = MockResolverClient::new(&f.env, &resolver_id);
+    resolver_client.init(&false, &true);
+
+    let schema_uid = f.registry.register_schema(
+        &f.authority,
+        &symbol_short!("reject1"),
+        &String::from_str(&f.env, "string note"),
+        &true,
+        &Some(resolver_id),
+    );
+
+    let res = f.att.try_attest(
+        &f.issuer,
+        &schema_uid,
+        &f.subject,
+        &data(&f.env),
+        &None,
+        &None,
+    );
+    assert_eq!(res, Err(Ok(Error::ResolverRejected)));
+}
+
+#[test]
+fn resolver_rejection_on_revoke_fails() {
+    let f = setup();
+    let resolver_id = f.env.register(MockResolver, ());
+    let resolver_client = MockResolverClient::new(&f.env, &resolver_id);
+    resolver_client.init(&true, &false);
+
+    let schema_uid = f.registry.register_schema(
+        &f.authority,
+        &symbol_short!("reject2"),
+        &String::from_str(&f.env, "string note"),
+        &true,
+        &Some(resolver_id),
+    );
+
+    let uid = f.att.attest(
+        &f.issuer,
+        &schema_uid,
+        &f.subject,
+        &data(&f.env),
+        &None,
+        &None,
+    );
+    assert!(f.att.is_valid(&uid));
+
+    let res = f.att.try_revoke(&f.issuer, &uid);
+    assert_eq!(res, Err(Ok(Error::ResolverRejected)));
+    // Attestation must remain unrevoked and valid
+    assert!(f.att.is_valid(&uid));
+    let rec = f.att.get_attestation(&uid).unwrap();
+    assert!(!rec.revoked);
+}
+
+#[test]
+fn resolver_rejection_in_batch_reverts_entire_batch() {
+    let f = setup();
+    let resolver_id = f.env.register(MockResolver, ());
+    let resolver_client = MockResolverClient::new(&f.env, &resolver_id);
+    resolver_client.init(&false, &true);
+
+    let resolved_schema = f.registry.register_schema(
+        &f.authority,
+        &symbol_short!("resolv"),
+        &String::from_str(&f.env, "string note"),
+        &true,
+        &Some(resolver_id),
+    );
+    let open_schema = register_schema(&f, true);
+
+    let mut inputs = Vec::new(&f.env);
+    inputs.push_back(AttestInput {
+        schema_uid: open_schema.clone(),
+        subject: f.subject.clone(),
+        data: data(&f.env),
+        expiration: None,
+        ref_uid: None,
+    });
+    inputs.push_back(AttestInput {
+        schema_uid: resolved_schema.clone(),
+        subject: f.subject.clone(),
+        data: data(&f.env),
+        expiration: None,
+        ref_uid: None,
+    });
+
+    let res = f.att.try_attest_batch(&f.issuer, &inputs);
+    assert_eq!(res, Err(Ok(Error::ResolverRejected)));
+
+    // Ensure zero records were created and counts untouched
+    assert_eq!(f.att.schema_attestation_count(&open_schema), 0);
+    assert_eq!(f.att.schema_attestation_count(&resolved_schema), 0);
+    assert_eq!(f.att.attestations_for_subject(&f.subject).len(), 0);
+}
