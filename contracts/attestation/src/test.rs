@@ -1111,12 +1111,9 @@ fn attest_delegated_valid_signature_succeeds() {
     let nonce = f.att.get_nonce(&f.issuer);
     let deadline = f.env.ledger().timestamp() + 3_600;
 
-    let payload = f.att.delegated_attestation_payload(
-        &f.issuer,
-        &input,
-        &nonce,
-        &deadline,
-    );
+    let payload = f
+        .att
+        .delegated_attestation_payload(&f.issuer, &input, &nonce, &deadline);
 
     let mut payload_bytes = [0u8; 4096];
     let payload_len = payload.len() as usize;
@@ -1124,7 +1121,9 @@ fn attest_delegated_valid_signature_succeeds() {
     let signature_raw = signing_key.sign(&payload_bytes[..payload_len]);
     let signature = BytesN::from_array(&f.env, &signature_raw.to_bytes());
 
-    let uid = f.att.attest_delegated(&f.issuer, &input, &deadline, &signature);
+    let uid = f
+        .att
+        .attest_delegated(&f.issuer, &input, &deadline, &signature);
 
     assert!(f.att.is_valid(&uid));
     let rec = f.att.get_attestation(&uid).unwrap();
