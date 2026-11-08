@@ -1480,3 +1480,19 @@ fn end_to_end_protocol_lifecycle() {
         .att
         .verify_offchain(&f.issuer, &offchain_hash, &offchain_sig));
 }
+
+#[test]
+fn error_codes_align_with_specification() {
+    assert_eq!(Error::SchemaNotFound as u32, 1);
+    assert_eq!(Error::AttestationNotFound as u32, 2);
+    assert_eq!(Error::NotAuthorizedToRevoke as u32, 3);
+    assert_eq!(Error::SchemaNotRevocable as u32, 4);
+    assert_eq!(Error::AlreadyRevoked as u32, 5);
+    assert_eq!(Error::DataTooLong as u32, 6);
+    assert_eq!(Error::NotInitialized as u32, 7);
+    assert_eq!(Error::ExpirationInPast as u32, 8);
+    assert_eq!(Error::RefNotFound as u32, 9);
+    assert_eq!(Error::ResolverRejected as u32, 10);
+    assert_eq!(Error::SignerNotConfigured as u32, 11);
+    assert_eq!(Error::DeadlineExceeded as u32, 12);
+}
