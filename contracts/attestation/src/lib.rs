@@ -283,6 +283,13 @@ impl AttestationContract {
             return Err(Error::SchemaNotRevocable);
         }
 
+        if let Some(ref resolver_addr) = schema.resolver {
+            let client = resolver::ResolverClient::new(&env, resolver_addr);
+            if !client.on_revoke(&attestation) {
+                return Err(Error::ResolverRejected);
+            }
+        }
+
         let now = env.ledger().timestamp();
         attestation.revoked = true;
         attestation.revocation_time = Some(now);
@@ -394,7 +401,7 @@ impl AttestationContract {
         env: &Env,
         issuer: &Address,
         input: AttestInput,
-        _schema: &SchemaView,
+        schema: &SchemaView,
         nonce: u64,
         now: u64,
     ) -> Result<BytesN<32>, Error> {
@@ -420,6 +427,13 @@ impl AttestationContract {
             revocation_time: None,
             created_at: now,
         };
+
+        if let Some(ref resolver_addr) = schema.resolver {
+            let client = resolver::ResolverClient::new(env, resolver_addr);
+            if !client.on_attest(&attestation) {
+                return Err(Error::ResolverRejected);
+            }
+        }
 
         Self::write_attestation(env, &uid, &attestation);
         Self::push_subject_index(env, &input.subject, &uid);
