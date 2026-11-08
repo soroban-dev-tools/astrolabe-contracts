@@ -1136,3 +1136,123 @@ fn attest_delegated_valid_signature_succeeds() {
     assert_eq!(f.att.get_nonce(&f.issuer), 1);
     assert_eq!(f.att.schema_attestation_count(&schema_uid), 1);
 }
+
+#[test]
+fn attest_delegated_unconfigured_signer_rejected() {
+    let f = setup();
+    let schema_uid = register_schema(&f, true);
+
+    let input = AttestInput {
+        schema_uid,
+        subject: f.subject.clone(),
+        data: data(&f.env),
+        expiration: None,
+        ref_uid: None,
+    };
+
+    let deadline = f.env.ledger().timestamp() + 1_000;
+    let fake_sig = BytesN::from_array(&f.env, &[0u8; 64]);
+
+    let res = f
+        .att
+        .try_attest_delegated(&f.issuer, &input, &deadline, &fake_sig);
+    assert_eq!(res, Err(Ok(Error::SignerNotConfigured)));
+}
+
+#[test]
+fn attest_delegated_expired_deadline_rejected() {
+    let f = setup();
+    let schema_uid = register_schema(&f, true);
+
+    let input = AttestInput {
+        schema_uid,
+        subject: f.subject.clone(),
+        data: data(&f.env),
+        expiration: None,
+        ref_uid: None,
+    };
+
+    f.env.ledger().set_timestamp(1_000);
+    let expired_deadline = 999;
+    let fake_sig = BytesN::from_array(&f.env, &[0u8; 64]);
+
+    let res = f
+        .att
+        .try_attest_delegated(&f.issuer, &input, &expired_deadline, &fake_sig);
+    assert_eq!(res, Err(Ok(Error::DeadlineExceeded)));
+}
+
+#[test]
+#[should_panic]
+fn attest_delegated_invalid_signature_panics() {
+    use ed25519_dalek::{Signer as _, SigningKey};
+
+    let f = setup();
+    let schema_uid = register_schema(&f, true);
+
+    let signing_key = SigningKey::from_bytes(&[21u8; 32]);
+    let verifying_key = signing_key.verifying_key();
+    let signer = BytesN::from_array(&f.env, &verifying_key.to_bytes());
+    f.att.set_authorized_signer(&f.issuer, &signer);
+
+    let input = AttestInput {
+        schema_uid,
+        subject: f.subject.clone(),
+        data: data(&f.env),
+        expiration: None,
+        ref_uid: None,
+    };
+
+    let deadline = f.env.ledger().timestamp() + 3_600;
+
+    let wrong_key = SigningKey::from_bytes(&[99u8; 32]);
+    let wrong_sig = wrong_key.sign(b"wrong payload");
+    let signature = BytesN::from_array(&f.env, &wrong_sig.to_bytes());
+
+    f.att
+        .attest_delegated(&f.issuer, &input, &deadline, &signature);
+}
+
+#[test]
+#[should_panic]
+fn attest_delegated_replay_attempt_panics() {
+    use ed25519_dalek::{Signer as _, SigningKey};
+
+    let f = setup();
+    let schema_uid = register_schema(&f, true);
+
+    let signing_key = SigningKey::from_bytes(&[33u8; 32]);
+    let verifying_key = signing_key.verifying_key();
+    let signer = BytesN::from_array(&f.env, &verifying_key.to_bytes());
+    f.att.set_authorized_signer(&f.issuer, &signer);
+
+    let input = AttestInput {
+        schema_uid,
+        subject: f.subject.clone(),
+        data: data(&f.env),
+        expiration: None,
+        ref_uid: None,
+    };
+
+    let nonce = f.att.get_nonce(&f.issuer);
+    let deadline = f.env.ledger().timestamp() + 3_600;
+
+    let payload = f
+        .att
+        .delegated_attestation_payload(&f.issuer, &input, &nonce, &deadline);
+
+    let mut payload_bytes = [0u8; 4096];
+    let payload_len = payload.len() as usize;
+    payload.copy_into_slice(&mut payload_bytes[..payload_len]);
+    let signature_raw = signing_key.sign(&payload_bytes[..payload_len]);
+    let signature = BytesN::from_array(&f.env, &signature_raw.to_bytes());
+
+    // First submission succeeds
+    let _uid = f
+        .att
+        .attest_delegated(&f.issuer, &input, &deadline, &signature);
+
+    // Replay submission with same signature must panic as nonce advanced
+    f.att
+        .attest_delegated(&f.issuer, &input, &deadline, &signature);
+}
