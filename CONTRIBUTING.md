@@ -86,9 +86,19 @@ rustup target add wasm32v1-none
 cargo test --all
 ```
 
-A passing test run means you are ready. To also build the on-chain artifacts:
+A passing test run means you are ready. To run the full verification suite (formatting, clippy, tests, and WASM compilation in a single command):
 
 ```bash
+make check
+# or directly:
+bash scripts/check.sh
+```
+
+To build release WASM artifacts:
+
+```bash
+make build
+# or:
 cargo build --target wasm32v1-none --release
 ```
 
@@ -105,27 +115,21 @@ scripts/seed.sh                           # registers the five seed schemas
 
 ## Where to start
 
-Issues carry three difficulty labels: `good first issue`, `intermediate`, and
-`advanced`, plus area labels. The unclaimed work below is ordered easiest to
-hardest and mirrors [`ISSUES.md`](ISSUES.md), where each item has full acceptance
-criteria.
+Protocol core features C1 through C8 are completed and verified in v0.1.0:
+- **C1** — Past expiration rejection (`ExpirationInPast = 8`)
+- **C2** — Linked attestation referential integrity check (`RefNotFound = 9`)
+- **C3** — Per-schema attestation counter and tests (`schema_attestation_count`)
+- **C4** — Golden regression hash and property determinism suite
+- **C5** — Atomic batch attestation (`attest_batch`)
+- **C6** — Schema resolver contract interface and execution hooks (`ResolverInterface`)
+- **C7** — Gasless delegated attestation (`attest_delegated`) with Ed25519 signature verification
+- **C8** — Off-chain signature verification (`verify_offchain`) and on-chain revocation by hash (`revoke_offchain`)
 
-1. **C1 — reject already-passed expirations** (`good first issue`). A small,
-   self-contained validation with one new error code. Protocol section 3.4.
-2. **C2 — validate `ref_uid` references** (`good first issue`). Confirm a linked
-   attestation exists before storing the link.
-3. **C3 — test and document `schema_attestation_count`** (`good first issue`).
-   Fill a test and documentation gap.
-4. **C4 — property tests for uid determinism** (`intermediate`). Pin the derivation
-   in protocol sections 2.3 and 3.3 with tests.
-5. **C5 — batch attest** (`intermediate`). All-or-nothing multi-attest sharing one
-   authorisation.
-6. **C6 — invoke the resolver on attest and revoke** (`intermediate`). Wire up the
-   stored `resolver` extension point from PRD section 4.1.
-7. **C7 — delegated attestation** (`advanced`). The single largest unclaimed piece:
-   ed25519 over a canonical payload, with replay protection. PRD section 4.2.
-8. **C8 — off-chain verification path** (`advanced`). PRD section 4.4; depends on
-   C7's payload format.
+For new contributions, see [`ISSUES.md`](ISSUES.md) for post-v0.1 roadmap tasks:
+1. **C9 — Schema migration and evolution patterns** (`intermediate`).
+2. **C10 — Custom account contract authorization integration** (`advanced`).
+3. **C11 — Comprehensive gas benchmarking and profiling suite** (`intermediate`).
+4. **C12 — Automated fuzz testing for XDR decoding and storage** (`advanced`).
 
 To claim an issue, comment on it and a maintainer will assign it to you. For
 anything labelled `advanced`, or any change to on-chain behaviour or storage
