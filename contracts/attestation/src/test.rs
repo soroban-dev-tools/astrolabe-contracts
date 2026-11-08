@@ -1255,3 +1255,27 @@ fn attest_delegated_replay_attempt_panics() {
     f.att
         .attest_delegated(&f.issuer, &input, &deadline, &signature);
 }
+
+#[test]
+fn offchain_revocation_lifecycle() {
+    let f = setup();
+    let hash = BytesN::from_array(&f.env, &[88u8; 32]);
+
+    assert!(!f.att.is_revoked_offchain(&hash));
+    assert_eq!(f.att.get_offchain_revocation(&hash), None);
+
+    f.env.ledger().set_timestamp(42_000);
+    f.att.revoke_offchain(&f.issuer, &hash);
+
+    // Event emitted immediately
+    let events = f.env.events().all();
+    let contract_events = events.filter_by_contract(&f.att.address);
+    assert_eq!(contract_events.events().len(), 1);
+
+    assert!(f.att.is_revoked_offchain(&hash));
+    assert_eq!(f.att.get_offchain_revocation(&hash), Some(42_000));
+
+    // Double revocation fails
+    let res = f.att.try_revoke_offchain(&f.issuer, &hash);
+    assert_eq!(res, Err(Ok(Error::AlreadyRevoked)));
+}
