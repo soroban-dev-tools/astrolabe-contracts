@@ -1058,3 +1058,31 @@ fn resolver_rejection_in_batch_reverts_entire_batch() {
     assert_eq!(f.att.schema_attestation_count(&resolved_schema), 0);
     assert_eq!(f.att.attestations_for_subject(&f.subject).len(), 0);
 }
+
+#[test]
+fn authorized_signer_configuration_lifecycle() {
+    let f = setup();
+
+    assert_eq!(f.att.get_authorized_signer(&f.issuer), None);
+    assert_eq!(f.att.get_nonce(&f.issuer), 0);
+
+    let signer = BytesN::from_array(&f.env, &[77u8; 32]);
+    f.att.set_authorized_signer(&f.issuer, &signer);
+
+    // Check SignerSet event immediately after invocation
+    let events = f.env.events().all();
+    let contract_events = events.filter_by_contract(&f.att.address);
+    assert_eq!(contract_events.events().len(), 1);
+
+    assert_eq!(f.att.get_authorized_signer(&f.issuer), Some(signer));
+
+    // Clear signer
+    f.att.clear_authorized_signer(&f.issuer);
+
+    // Check SignerCleared event immediately after invocation
+    let events = f.env.events().all();
+    let contract_events = events.filter_by_contract(&f.att.address);
+    assert_eq!(contract_events.events().len(), 1);
+
+    assert_eq!(f.att.get_authorized_signer(&f.issuer), None);
+}
