@@ -1333,3 +1333,62 @@ fn verify_offchain_invalid_signature_panics() {
 
     let _ = f.att.verify_offchain(&f.issuer, &hash, &bad_sig);
 }
+
+#[test]
+fn attest_boundary_data_length_and_expiration_limits() {
+    let f = setup();
+    let schema_uid = register_schema(&f, true);
+
+    // 1. Exactly MAX_DATA_LEN (1024) is accepted
+    let max_data = Bytes::from_array(&f.env, &[7u8; MAX_DATA_LEN as usize]);
+    let uid_max = f.att.attest(
+        &f.issuer,
+        &schema_uid,
+        &f.subject,
+        &max_data,
+        &None,
+        &None,
+    );
+    assert!(f.att.is_valid(&uid_max));
+    let rec = f.att.get_attestation(&uid_max).unwrap();
+    assert_eq!(rec.data.len(), MAX_DATA_LEN);
+
+    // 2. Empty data (0 bytes) is accepted
+    let empty_data = Bytes::new(&f.env);
+    let uid_empty = f.att.attest(
+        &f.issuer,
+        &schema_uid,
+        &f.subject,
+        &empty_data,
+        &None,
+        &None,
+    );
+    assert!(f.att.is_valid(&uid_empty));
+    let rec_empty = f.att.get_attestation(&uid_empty).unwrap();
+    assert_eq!(rec_empty.data.len(), 0);
+
+    // 3. Exactly now + 1 is accepted
+    let now = f.env.ledger().timestamp();
+    let uid_now_plus_1 = f.att.attest(
+        &f.issuer,
+        &schema_uid,
+        &f.subject,
+        &data(&f.env),
+        &Some(now + 1),
+        &None,
+    );
+    assert!(f.att.is_valid(&uid_now_plus_1));
+
+    // 4. u64::MAX expiration is accepted and remains valid
+    let uid_max_exp = f.att.attest(
+        &f.issuer,
+        &schema_uid,
+        &f.subject,
+        &data(&f.env),
+        &Some(u64::MAX),
+        &None,
+    );
+    assert!(f.att.is_valid(&uid_max_exp));
+    let rec_max_exp = f.att.get_attestation(&uid_max_exp).unwrap();
+    assert_eq!(rec_max_exp.expiration, Some(u64::MAX));
+}
