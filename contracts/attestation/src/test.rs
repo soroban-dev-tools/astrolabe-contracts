@@ -1341,14 +1341,9 @@ fn attest_boundary_data_length_and_expiration_limits() {
 
     // 1. Exactly MAX_DATA_LEN (1024) is accepted
     let max_data = Bytes::from_array(&f.env, &[7u8; MAX_DATA_LEN as usize]);
-    let uid_max = f.att.attest(
-        &f.issuer,
-        &schema_uid,
-        &f.subject,
-        &max_data,
-        &None,
-        &None,
-    );
+    let uid_max = f
+        .att
+        .attest(&f.issuer, &schema_uid, &f.subject, &max_data, &None, &None);
     assert!(f.att.is_valid(&uid_max));
     let rec = f.att.get_attestation(&uid_max).unwrap();
     assert_eq!(rec.data.len(), MAX_DATA_LEN);
