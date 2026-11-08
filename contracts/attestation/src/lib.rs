@@ -49,6 +49,8 @@ pub enum Error {
     ExpirationInPast = 8,
     RefNotFound = 9,
     ResolverRejected = 10,
+    SignerNotConfigured = 11,
+    DeadlineExceeded = 12,
 }
 
 /// One attestation. Stored under its uid in persistent storage.
@@ -95,6 +97,7 @@ enum DataKey {
     Subject(Address),
     Nonce(Address),
     SchemaCount(BytesN<32>),
+    Signer(Address),
 }
 
 #[contracttype]
@@ -126,6 +129,23 @@ pub struct Revoked {
     pub issuer: Address,
     pub subject: Address,
     pub revocation_time: u64,
+}
+
+/// Emitted when an issuer configures an authorized off-chain signing key.
+#[contractevent(topics = ["signer_set"])]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct SignerSet {
+    #[topic]
+    pub issuer: Address,
+    pub signer: BytesN<32>,
+}
+
+/// Emitted when an issuer clears their authorized off-chain signing key.
+#[contractevent(topics = ["signer_clr"])]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct SignerCleared {
+    #[topic]
+    pub issuer: Address,
 }
 
 /// Derive the attestation uid, matching `docs/protocol.md` section 3.3.
