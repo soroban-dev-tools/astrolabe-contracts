@@ -1,0 +1,15 @@
+{
+  "version": "1.0.0",
+  "project": "astrolabe-contracts",
+  "description": "On-chain attestation registry protocol for Stellar Soroban",
+  "funding": {
+    "drips": {
+      "network": "stellar",
+      "project_url": "https://drips.network",
+      "recipient": "CAYUJL5VPIVDBAGXAQ3FTOUJ4LICWV6IFKIMTRPAJB7ZS5FMRRI3M5EC"
+    },
+    "github": [
+      "https://github.com/soroban-dev-tools/astrolabe-contracts"
+    ]
+  }
+}

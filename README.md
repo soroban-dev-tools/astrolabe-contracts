@@ -145,6 +145,8 @@ WASM artifacts are generated in `target/wasm32v1-none/release/`:
 ## Documentation
 
 - **[Normative Protocol Specification](docs/protocol.md)** — Comprehensive interface types, storage layout, UID derivation formulas, and error codes.
+- **[Grant Review Readiness](docs/grant-readiness.md)** — Detailed self-assessment against Drips Network grant review criteria.
+- **[Reviewer & Auditor Guide](docs/reviewer-guide.md)** — Step-by-step local verification instructions and golden hash vectors.
 - **[Threat Model & Security](docs/threat-model.md)** — Trust assumptions, sensitive surfaces, and threat mitigations (T1–T15).
 - **[Design Decisions](docs/design-decisions.md)** — Rationale behind UID preimage hashing, FIFO index limits, and resolver boundaries.
 - **[Multi-Repo Contract](docs/multi-repo.md)** — Downstream compatibility rules between contracts, SDK, and explorer.

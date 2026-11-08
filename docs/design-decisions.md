@@ -3,6 +3,18 @@
 A running log of decisions a future contributor might question, with the
 reasoning. Newest first.
 
+## D8. On-chain revocation of off-chain attestations by payload hash
+
+Off-chain attestations do not occupy on-chain storage until a dispute or revocation occurs. To allow issuers to revoke off-chain claims before their natural expiration, `revoke_offchain` records the 32-byte payload hash in persistent storage. `verify_offchain` checks this registry, allowing dApps and smart contracts to verify off-chain attestations with certainty that they have not been revoked.
+
+## D7. Authorized signer registration for delegated attestations
+
+Rather than requiring an issuer to sign every transaction on-chain or attempting to extract an address from raw cryptographic public keys, issuers designate an authorized Ed25519 public key via `set_authorized_signer`. This binds an off-chain signing agent (e.g. an automated server or cold wallet) to an on-chain `Address`, enabling gasless relaying while maintaining strict non-repudiation and cryptographic replay protection via monotonic nonces and deadlines.
+
+## D6. Synchronous resolver interface with boolean approval
+
+Schema resolvers are executed synchronously during `attest` and `revoke` via typed `ResolverClient` calls (`on_attest`, `on_revoke`). Resolvers return a boolean (`true` for approval, `false` for rejection). If a resolver returns `false` or reverts, the entire operation reverts with `Error::ResolverRejected`. This prevents partial state corruption, guarantees atomic evaluation, and allows schemas to enforce access control or custom validation without coupling the core contract to external business logic.
+
 ## D5. Schema names use underscores on chain
 
 The PRD and seed list write schema names with hyphens (`verified-merchant`). A

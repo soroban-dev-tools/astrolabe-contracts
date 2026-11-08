@@ -233,3 +233,10 @@ fn register_schema_with_empty_definition_succeeds() {
     assert_eq!(schema.definition, empty_def);
     assert!(!schema.revocable);
 }
+
+#[test]
+fn schema_registry_error_codes_align_with_specification() {
+    assert_eq!(Error::SchemaAlreadyExists as u32, 1);
+    assert_eq!(Error::DefinitionTooLong as u32, 2);
+    assert_eq!(Error::SchemaNotFound as u32, 3);
+}
