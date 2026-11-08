@@ -1279,3 +1279,37 @@ fn offchain_revocation_lifecycle() {
     let res = f.att.try_revoke_offchain(&f.issuer, &hash);
     assert_eq!(res, Err(Ok(Error::AlreadyRevoked)));
 }
+
+#[test]
+fn verify_offchain_valid_signature_and_revocation_states() {
+    use ed25519_dalek::{Signer as _, SigningKey};
+
+    let f = setup();
+    let hash = BytesN::from_array(&f.env, &[71u8; 32]);
+    let fake_sig = BytesN::from_array(&f.env, &[0u8; 64]);
+
+    // 1. Unconfigured signer returns SignerNotConfigured
+    let res = f.att.try_verify_offchain(&f.issuer, &hash, &fake_sig);
+    assert_eq!(res, Err(Ok(Error::SignerNotConfigured)));
+
+    // 2. Configure signer
+    let signing_key = SigningKey::from_bytes(&[55u8; 32]);
+    let verifying_key = signing_key.verifying_key();
+    let signer = BytesN::from_array(&f.env, &verifying_key.to_bytes());
+    f.att.set_authorized_signer(&f.issuer, &signer);
+
+    // 3. Sign the 32-byte payload hash
+    let sig_raw = signing_key.sign(&hash.to_array());
+    let sig = BytesN::from_array(&f.env, &sig_raw.to_bytes());
+
+    // 4. Verify valid unrevoked signature returns Ok(true)
+    let res = f.att.verify_offchain(&f.issuer, &hash, &sig);
+    assert!(res);
+
+    // 5. Revoke the hash on-chain
+    f.att.revoke_offchain(&f.issuer, &hash);
+
+    // 6. Verify revoked hash returns Ok(false)
+    let res = f.att.verify_offchain(&f.issuer, &hash, &sig);
+    assert!(!res);
+}
