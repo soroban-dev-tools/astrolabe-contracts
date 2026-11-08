@@ -1,126 +1,76 @@
-# Open Issues — astrolabe-contracts
+# Project Issues & Roadmap — astrolabe-contracts
 
-These are the unclaimed pieces of the protocol, ordered easiest to hardest. Each
-entry is written so it can be opened as a GitHub issue as-is. Difficulty labels:
-`good first issue`, `intermediate`, `advanced`. The list here is the source of
-truth for the "Where to start" section of `CONTRIBUTING.md`; if they disagree, one
-is wrong.
-
-The single largest unclaimed piece is **delegated attestation** (C7), which pulls
-in ed25519 verification and a canonical payload format.
+This document tracks the resolved protocol core issues for the v0.1.0 release and the open roadmap issues for subsequent milestones.
 
 ---
 
-## C1. Reject attestations with an already-passed expiration
+## Resolved Issues in v0.1.0
 
-**Difficulty:** good first issue
-**Likely files:** `contracts/attestation/src/lib.rs`, `contracts/attestation/src/test.rs`
+The initial protocol core (C1–C8) is fully implemented, verified with 60 tests, and documented:
 
-`attest` accepts any `expiration`, including a timestamp already in the past, which
-creates an attestation that is invalid the moment it is written. Reject an
-`expiration` that is not strictly greater than the current ledger timestamp with a
-new error `ExpirationInPast`.
+* [x] **C1. Reject attestations with an already-passed expiration** — Implemented with `Error::ExpirationInPast = 8`.
+* [x] **C2. Validate `ref_uid` points to an existing attestation** — Implemented with `Error::RefNotFound = 9`.
+* [x] **C3. Emit a schema-count read helper and cover it with tests** — Implemented via `schema_attestation_count`.
+* [x] **C4. Property tests for UID determinism and golden hash pinning** — Determinism and sensitivity suite in both crates.
+* [x] **C5. Batch attestation (`attest_batch`)** — Atomic issuance under shared issuer auth with sequential nonces.
+* [x] **C6. Schema resolver contract execution hooks** — `ResolverInterface` with `on_attest` and `on_revoke`.
+* [x] **C7. Delegated attestation (`attest_delegated`)** — Gasless submission with Ed25519 verification and monotonic nonce replay protection.
+* [x] **C8. Off-chain verification and revocation by hash** — `verify_offchain`, `revoke_offchain`, and `is_revoked_offchain`.
 
-**Acceptance criteria**
-- New error variant with a stable code, documented in `docs/protocol.md` section 6.
-- `attest` returns the error when `expiration <= now`.
-- A test proves rejection in the past and acceptance in the future.
+---
 
-## C2. Validate `ref_uid` points to an existing attestation
+## Open Roadmap Issues
 
-**Difficulty:** good first issue
-**Likely files:** `contracts/attestation/src/lib.rs`, `contracts/attestation/src/test.rs`
-
-`ref_uid` is stored without checking that the referenced attestation exists. Add an
-optional check: if `ref_uid` is `Some`, the referenced attestation must exist, else
-return `RefNotFound`.
-
-**Acceptance criteria**
-- New error variant, documented.
-- Tests for a valid reference, a missing reference, and `None`.
-
-## C3. Emit a schema-count read helper and cover it with tests
-
-**Difficulty:** good first issue
-**Likely files:** `contracts/attestation/src/lib.rs`, `contracts/attestation/src/test.rs`
-
-`schema_attestation_count` exists but has no direct test, and there is no matching
-event when the count crosses round numbers. Add focused tests and document the
-function in `docs/protocol.md`.
-
-**Acceptance criteria**
-- Test that the count increments per attest and is per-schema.
-- Function documented in the protocol spec.
-
-## C4. Property tests for uid determinism
+### C9. Schema versioning and migration patterns
 
 **Difficulty:** intermediate
-**Likely files:** `contracts/schema-registry/src/test.rs`, `contracts/attestation/src/test.rs`
+**Area:** architecture, schema-registry
 
-Add tests that assert the documented uid derivation is stable: the same inputs
-always yield the same `schema_uid`, and differing inputs yield different uids across
-each field. Reference `docs/protocol.md` sections 2.3 and 3.3.
+Schemas are write-once and immutable. When an authority needs to evolve a schema definition (e.g. adding a new field to a KYC tier), standard protocol patterns are needed to declare superseding schemas and link parent-child schema versions.
 
 **Acceptance criteria**
-- Tests vary each field independently and assert uid changes.
-- A regression test pins one known input to one known uid.
+- Document canonical schema evolution guidelines in `docs/protocol.md`.
+- Implement optional reference link in schema registration pointing to a predecessor `schema_uid`.
+- Add tests verifying schema version linking without breaking backward compatibility.
 
-## C5. Batch attest
+---
 
-**Difficulty:** intermediate
-**Likely files:** `contracts/attestation/src/lib.rs`, `contracts/attestation/src/test.rs`, `docs/protocol.md`
-
-Add `attest_batch(issuer, Vec<AttestInput>)` that writes several attestations under
-one authorisation, sharing the nonce sequence. Keep per-entry validation identical
-to `attest`.
-
-**Acceptance criteria**
-- All-or-nothing semantics: one invalid entry reverts the batch.
-- Nonce advances by the batch length.
-- Tests for a mixed valid/invalid batch and a large batch.
-
-## C6. Invoke the resolver on attest and revoke
-
-**Difficulty:** intermediate
-**Likely files:** `contracts/attestation/src/lib.rs`, `docs/protocol.md`, `docs/threat-model.md`
-
-The `resolver` field on a schema is stored but never called. When a schema has a
-resolver, call it on `attest` and `revoke` so it can gate or charge. Define the
-resolver interface and add the reentrancy and gas-griefing entries to the threat
-model. See PRD section 4.1.
-
-**Acceptance criteria**
-- A documented resolver trait/interface.
-- Attest and revoke call the resolver when present and honour a rejection.
-- Threat-model items added for a malicious resolver.
-- A test resolver used in tests.
-
-## C7. Delegated attestation (`attest_delegated`)
+### C10. Custom account contract authorization integration
 
 **Difficulty:** advanced
-**Likely files:** `contracts/attestation/src/lib.rs`, `docs/protocol.md`, `docs/threat-model.md`
+**Area:** auth, attestation
 
-Let a submitter pay to publish an attestation an issuer signed off chain, per PRD
-section 4.2. Define the canonical payload, verify an ed25519 signature over it,
-and prevent replay. This is the largest open piece and should start with a written
-proposal in Discussions.
+Stellar supports smart contract accounts implementing `CustomAccountInterface` (`__check_auth`). Extend delegated attestation verification to optionally support smart contract account signatures via cross-contract authorization checks in addition to raw Ed25519 keypairs.
 
 **Acceptance criteria**
-- Canonical payload format documented and reproducible by the SDK.
-- Signature verified against the issuer key; bad signatures rejected.
-- Replay protection with tests.
-- Threat-model entries for the new surface.
+- Support contract accounts as delegated signers in `attest_delegated`.
+- Maintain replay protection across account contract rotations.
+- Comprehensive test coverage using mock smart account contracts.
 
-## C8. Off-chain verification path (`verify_offchain`)
+---
+
+### C11. Gas benchmarking and profiling harness
+
+**Difficulty:** intermediate
+**Area:** tooling, benchmarking
+
+Add automated Soroban CPU and memory gas profiling benchmarks for batch attestation (varying batch sizes 1 to 20) and Ed25519 cryptographic verification to monitor instruction count regression across Soroban SDK releases.
+
+**Acceptance criteria**
+- Benchmark harness measuring CPU instructions and memory byte allocations.
+- Documented baseline budget consumption in `docs/benchmarks.md`.
+- Automated threshold assertions preventing gas regression.
+
+---
+
+### C12. Automated fuzz testing harness for XDR preimages and storage
 
 **Difficulty:** advanced
-**Likely files:** `contracts/attestation/src/lib.rs`, `docs/protocol.md`
+**Area:** testing, security
 
-Support the off-chain mode from PRD section 4.4: a verifier checks a signed payload
-and that the issuer has published no revocation for its hash. Only revocations
-touch the chain. Depends on the payload format from C7.
+Add property-based fuzz testing using `proptest` or `cargo-fuzz` targeting UID derivation, XDR canonical encoding edge cases, and subject index FIFO eviction boundaries under arbitrary pseudo-random sequences.
 
 **Acceptance criteria**
-- `verify_offchain(issuer, signature, payload_hash)` returns validity.
-- Revocation-by-hash storage and its TTL handling documented and tested.
-- Tests for valid, revoked, and forged payloads.
+- Fuzz targets for `derive_uid` and `compute_delegated_payload`.
+- Proptest coverage for subject index eviction up to 1,000 randomized operations.
+- Zero crashes, integer overflows, or unexpected panic states.

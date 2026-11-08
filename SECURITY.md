@@ -1,32 +1,52 @@
 # Security Policy
 
-## Reporting a vulnerability
+## Supported Versions
 
-Report vulnerabilities privately by email to **security@soroban-dev-tools.org**.
-Do not open a public issue for a security problem.
+Only the latest minor release branch receives active security updates and vulnerability patches.
 
-Include, as far as you can: the contract and function affected, a description of
-the impact, and a way to reproduce it (a failing test or a transaction hash on
-Testnet is ideal). We will acknowledge your report and keep you updated as we
-investigate. Please give us reasonable time to ship a fix before any public
-disclosure.
+| Version | Supported          | Status                 |
+| ------- | ------------------ | ---------------------- |
+| 0.1.x   | :white_check_mark: | Active (Stellar Testnet) |
+| < 0.1.0 | :x:                | Deprecated             |
 
-## Scope
+## Reporting a Vulnerability
 
-This repository holds the on-chain protocol: the schema registry and attestation
-contracts, their deploy and seed scripts, and the deployment records. Sensitive
-surfaces here are:
+We take the security of Astrolabe on-chain contracts seriously. If you discover a security vulnerability or potential threat vector, please report it privately.
 
-- The authorisation checks in `attest` and `revoke` (see `docs/threat-model.md`,
-  items T1 and T2).
-- Schema immutability and uid derivation (T3, T4).
-- The state-growth bounds on the per-subject index and input sizes (T5, T6).
+**Do NOT report security vulnerabilities via public GitHub issues, discussions, or pull requests.**
 
-Bugs in the TypeScript client belong in `astrolabe-sdk`; bugs in the web app
-belong in `astrolabe-explorer`.
+### Submission Process
 
-## Status
+1. Email your report to **security@soroban-dev-tools.org** (or **security@astrolabe.domains**).
+2. Include the following details in your report:
+   - Affected contract (`schema-registry` or `attestation`) and specific endpoint.
+   - Comprehensive vulnerability description and potential impact.
+   - Step-by-step reproduction instructions, proof-of-concept Rust test, or Testnet transaction hash.
+   - Suggested remediation or patch, if available.
 
-Astrolabe is **unaudited** and deployed to **Stellar Testnet only**. Do not rely
-on it to protect anything of value, and do not deploy it to Mainnet, until the
-README of this repository states that an audit has been completed.
+### Response SLA & Timeline
+
+- **Initial Acknowledgment:** Within 48 hours of report submission.
+- **Vulnerability Assessment:** Within 5 business days, confirming severity and reproduction.
+- **Remediation & Patch:** Security patches will be prepared, reviewed, and deployed to Testnet with coordinated disclosure within 30 days.
+
+## Scope & Sensitive Surfaces
+
+This repository contains the on-chain Soroban protocol contracts. Key sensitive surfaces include:
+
+- **Authorization Enforcement:** Correctness of `require_auth` in `attest`, `revoke`, `set_authorized_signer`, and `revoke_offchain` (Threat Model T1, T2, T15).
+- **Cryptographic Signatures:** Verification of Ed25519 signatures in `attest_delegated` and `verify_offchain` (T11).
+- **Replay Protection:** Monotonic nonces and timestamp deadlines for delegated operations (T8, T12).
+- **Extension Boundaries:** Safe cross-contract invocation of optional schema resolvers (`ResolverInterface`) preventing unhandled reentrancy or state corruption (T10).
+- **Storage Growth & Resource Limits:** Bounded FIFO subject index (max 100 entries), definition lengths (max 512 bytes), and data payload limits (max 1024 bytes) (T5, T6).
+- **UID Derivation Immutability:** Deterministic SHA-256 derivation protecting against schema name squatting and collisions (T3, T4).
+
+Issues affecting off-chain libraries or frontend interfaces belong in their respective repositories:
+- TypeScript SDK: [`astrolabe-sdk`](https://github.com/soroban-dev-tools/astrolabe-sdk)
+- Web Explorer: [`astrolabe-explorer`](https://github.com/soroban-dev-tools/astrolabe-explorer)
+
+## Operational Security Guidelines
+
+- Never commit private keys or seed phrases to this repository.
+- Use `.env.example` with dummy values for local development.
+- Astrolabe contracts are deployed to **Stellar Testnet**. Do not deploy to Mainnet until an independent third-party security audit is completed.

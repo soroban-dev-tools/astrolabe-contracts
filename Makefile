@@ -17,7 +17,7 @@ fmt-check:
 lint:
 	cargo clippy --all-targets -- -D warnings
 
-check: fmt-check lint test
+check: fmt-check lint test build
 
 clean:
 	cargo clean
