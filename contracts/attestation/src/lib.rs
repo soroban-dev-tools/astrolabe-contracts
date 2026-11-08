@@ -98,6 +98,7 @@ enum DataKey {
     Nonce(Address),
     SchemaCount(BytesN<32>),
     Signer(Address),
+    OffchainRevocation(BytesN<32>),
 }
 
 #[contracttype]
@@ -146,6 +147,17 @@ pub struct SignerSet {
 pub struct SignerCleared {
     #[topic]
     pub issuer: Address,
+}
+
+/// Emitted on every successful off-chain revocation.
+#[contractevent(topics = ["offchain_rev"])]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct OffchainRevoked {
+    #[topic]
+    pub issuer: Address,
+    #[topic]
+    pub payload_hash: BytesN<32>,
+    pub revocation_time: u64,
 }
 
 /// Derive the attestation uid, matching `docs/protocol.md` section 3.3.
