@@ -190,70 +190,17 @@ impl AttestationContract {
     ) -> Result<BytesN<32>, Error> {
         issuer.require_auth();
 
-        if data.len() > MAX_DATA_LEN {
-            return Err(Error::DataTooLong);
-        }
-
-        if let Some(exp) = expiration {
-            if exp <= env.ledger().timestamp() {
-                return Err(Error::ExpirationInPast);
-            }
-        }
-
-        if let Some(ref r) = ref_uid {
-            if !env
-                .storage()
-                .persistent()
-                .has(&DataKey::Attestation(r.clone()))
-            {
-                return Err(Error::RefNotFound);
-            }
-        }
-
-        // Confirm the schema exists in the registry.
-        if Self::lookup_schema(&env, &schema_uid)?.is_none() {
-            return Err(Error::SchemaNotFound);
-        }
-
-        let nonce = Self::read_and_advance_nonce(&env, &issuer, 1);
-
-        let uid = derive_uid(
-            &env,
-            &schema_uid,
-            &issuer,
-            &subject,
-            &data,
-            &expiration,
-            &ref_uid,
-            nonce,
-        );
-
-        let attestation = Attestation {
-            schema_uid: schema_uid.clone(),
-            issuer: issuer.clone(),
-            subject: subject.clone(),
+        let input = AttestInput {
+            schema_uid,
+            subject,
             data,
             expiration,
             ref_uid,
-            revoked: false,
-            revocation_time: None,
-            created_at: env.ledger().timestamp(),
         };
-
-        Self::write_attestation(&env, &uid, &attestation);
-        Self::push_subject_index(&env, &subject, &uid);
-        Self::increment_schema_count(&env, &schema_uid, 1);
-
-        Attested {
-            schema_uid,
-            attestation_uid: uid.clone(),
-            issuer,
-            subject,
-            expiration,
-        }
-        .publish(&env);
-
-        Ok(uid)
+        let now = env.ledger().timestamp();
+        let schema = Self::validate_input(&env, &input, now)?;
+        let nonce = Self::read_and_advance_nonce(&env, &issuer, 1);
+        Self::store_attestation(&env, &issuer, input, &schema, nonce, now)
     }
 
     /// Create multiple attestations atomically under one issuer authorization.
@@ -281,27 +228,9 @@ impl AttestationContract {
 
         let now = env.ledger().timestamp();
 
+        let mut schemas = Vec::new(&env);
         for input in inputs.iter() {
-            if input.data.len() > MAX_DATA_LEN {
-                return Err(Error::DataTooLong);
-            }
-            if let Some(exp) = input.expiration {
-                if exp <= now {
-                    return Err(Error::ExpirationInPast);
-                }
-            }
-            if Self::lookup_schema(&env, &input.schema_uid)?.is_none() {
-                return Err(Error::SchemaNotFound);
-            }
-            if let Some(ref r) = input.ref_uid {
-                if !env
-                    .storage()
-                    .persistent()
-                    .has(&DataKey::Attestation(r.clone()))
-                {
-                    return Err(Error::RefNotFound);
-                }
-            }
+            schemas.push_back(Self::validate_input(&env, &input, now)?);
         }
 
         let count = u64::from(inputs.len());
@@ -309,44 +238,11 @@ impl AttestationContract {
         let mut uids = Vec::new(&env);
 
         for (i, input) in inputs.iter().enumerate() {
+            let schema = schemas.get_unchecked(u32::try_from(i).unwrap());
             let nonce = starting_nonce + (i as u64);
-            let uid = derive_uid(
-                &env,
-                &input.schema_uid,
-                &issuer,
-                &input.subject,
-                &input.data,
-                &input.expiration,
-                &input.ref_uid,
-                nonce,
-            );
-
-            let attestation = Attestation {
-                schema_uid: input.schema_uid.clone(),
-                issuer: issuer.clone(),
-                subject: input.subject.clone(),
-                data: input.data,
-                expiration: input.expiration,
-                ref_uid: input.ref_uid,
-                revoked: false,
-                revocation_time: None,
-                created_at: now,
-            };
-
-            Self::write_attestation(&env, &uid, &attestation);
-            Self::push_subject_index(&env, &input.subject, &uid);
-            Self::increment_schema_count(&env, &input.schema_uid, 1);
-
-            Attested {
-                schema_uid: input.schema_uid,
-                attestation_uid: uid.clone(),
-                issuer: issuer.clone(),
-                subject: input.subject,
-                expiration: input.expiration,
-            }
-            .publish(&env);
-
-            uids.push_back(uid);
+            uids.push_back(Self::store_attestation(
+                &env, &issuer, input, &schema, nonce, now,
+            )?);
         }
 
         Ok(uids)
@@ -468,6 +364,76 @@ impl AttestationContract {
     /// Returns `Error::NotInitialized` if the registry contract address is not set.
     pub fn registry(env: Env) -> Result<Address, Error> {
         registry_id(&env)
+    }
+
+    /// Check every attestation precondition that does not depend on the issuer.
+    /// Returns the schema so callers can reuse it without a second registry call.
+    fn validate_input(env: &Env, input: &AttestInput, now: u64) -> Result<SchemaView, Error> {
+        if input.data.len() > MAX_DATA_LEN {
+            return Err(Error::DataTooLong);
+        }
+        if input.expiration.is_some_and(|exp| exp <= now) {
+            return Err(Error::ExpirationInPast);
+        }
+        let schema = Self::lookup_schema(env, &input.schema_uid)?.ok_or(Error::SchemaNotFound)?;
+        if let Some(ref r) = input.ref_uid {
+            if !env
+                .storage()
+                .persistent()
+                .has(&DataKey::Attestation(r.clone()))
+            {
+                return Err(Error::RefNotFound);
+            }
+        }
+        Ok(schema)
+    }
+
+    /// Persist a validated attestation, update indexes and publish its event.
+    fn store_attestation(
+        env: &Env,
+        issuer: &Address,
+        input: AttestInput,
+        _schema: &SchemaView,
+        nonce: u64,
+        now: u64,
+    ) -> Result<BytesN<32>, Error> {
+        let uid = derive_uid(
+            env,
+            &input.schema_uid,
+            issuer,
+            &input.subject,
+            &input.data,
+            &input.expiration,
+            &input.ref_uid,
+            nonce,
+        );
+
+        let attestation = Attestation {
+            schema_uid: input.schema_uid.clone(),
+            issuer: issuer.clone(),
+            subject: input.subject.clone(),
+            data: input.data,
+            expiration: input.expiration,
+            ref_uid: input.ref_uid,
+            revoked: false,
+            revocation_time: None,
+            created_at: now,
+        };
+
+        Self::write_attestation(env, &uid, &attestation);
+        Self::push_subject_index(env, &input.subject, &uid);
+        Self::increment_schema_count(env, &input.schema_uid, 1);
+
+        Attested {
+            schema_uid: input.schema_uid,
+            attestation_uid: uid.clone(),
+            issuer: issuer.clone(),
+            subject: input.subject,
+            expiration: input.expiration,
+        }
+        .publish(env);
+
+        Ok(uid)
     }
 
     fn lookup_schema(env: &Env, schema_uid: &BytesN<32>) -> Result<Option<SchemaView>, Error> {
