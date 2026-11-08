@@ -1086,3 +1086,53 @@ fn authorized_signer_configuration_lifecycle() {
 
     assert_eq!(f.att.get_authorized_signer(&f.issuer), None);
 }
+
+#[test]
+fn attest_delegated_valid_signature_succeeds() {
+    use ed25519_dalek::{Signer as _, SigningKey};
+
+    let f = setup();
+    let schema_uid = register_schema(&f, true);
+
+    let signing_key = SigningKey::from_bytes(&[15u8; 32]);
+    let verifying_key = signing_key.verifying_key();
+    let signer = BytesN::from_array(&f.env, &verifying_key.to_bytes());
+
+    f.att.set_authorized_signer(&f.issuer, &signer);
+
+    let input = AttestInput {
+        schema_uid: schema_uid.clone(),
+        subject: f.subject.clone(),
+        data: data(&f.env),
+        expiration: None,
+        ref_uid: None,
+    };
+
+    let nonce = f.att.get_nonce(&f.issuer);
+    let deadline = f.env.ledger().timestamp() + 3_600;
+
+    let payload = f.att.delegated_attestation_payload(
+        &f.issuer,
+        &input,
+        &nonce,
+        &deadline,
+    );
+
+    let mut payload_bytes = [0u8; 4096];
+    let payload_len = payload.len() as usize;
+    payload.copy_into_slice(&mut payload_bytes[..payload_len]);
+    let signature_raw = signing_key.sign(&payload_bytes[..payload_len]);
+    let signature = BytesN::from_array(&f.env, &signature_raw.to_bytes());
+
+    let uid = f.att.attest_delegated(&f.issuer, &input, &deadline, &signature);
+
+    assert!(f.att.is_valid(&uid));
+    let rec = f.att.get_attestation(&uid).unwrap();
+    assert_eq!(rec.issuer, f.issuer);
+    assert_eq!(rec.subject, f.subject);
+    assert_eq!(rec.schema_uid, schema_uid);
+
+    // Nonce must have advanced from 0 to 1
+    assert_eq!(f.att.get_nonce(&f.issuer), 1);
+    assert_eq!(f.att.schema_attestation_count(&schema_uid), 1);
+}

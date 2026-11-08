@@ -20,3 +20,4 @@ soroban-sdk = { workspace = true }
 [dev-dependencies]
 soroban-sdk = { workspace = true, features = ["testutils"] }
 astrolabe-schema-registry = { path = "../schema-registry", features = ["testutils"] }
+ed25519-dalek = { version = "2.2.0", default-features = false, features = ["fast"] }
