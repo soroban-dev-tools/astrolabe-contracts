@@ -444,6 +444,37 @@ impl AttestationContract {
         time
     }
 
+    /// Verify an off-chain attestation signature and check for on-chain revocation.
+    ///
+    /// Returns `true` if the issuer has an authorized signer configured, the signature
+    /// is valid over the 32-byte payload hash, and the payload hash has NOT been revoked.
+    /// Returns `false` if the payload hash is revoked.
+    ///
+    /// # Errors
+    ///
+    /// - Returns `Error::SignerNotConfigured` if the issuer has no authorized signer.
+    pub fn verify_offchain(
+        env: Env,
+        issuer: Address,
+        payload_hash: BytesN<32>,
+        signature: BytesN<64>,
+    ) -> Result<bool, Error> {
+        if Self::is_revoked_offchain(env.clone(), payload_hash.clone()) {
+            return Ok(false);
+        }
+
+        let signer = env
+            .storage()
+            .persistent()
+            .get::<_, BytesN<32>>(&DataKey::Signer(issuer))
+            .ok_or(Error::SignerNotConfigured)?;
+
+        let msg_bytes = Bytes::from(payload_hash);
+        env.crypto().ed25519_verify(&signer, &msg_bytes, &signature);
+
+        Ok(true)
+    }
+
     /// Read an attestation by uid. Extends its TTL on a hit.
     pub fn get_attestation(env: Env, attestation_uid: BytesN<32>) -> Option<Attestation> {
         let key = DataKey::Attestation(attestation_uid);
