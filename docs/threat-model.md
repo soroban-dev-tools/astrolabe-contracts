@@ -36,16 +36,13 @@ authorisation check must state which item here it affects.
 | T7 | Reading a valid attestation returns a stale or archived entry. | Reads extend the entry TTL, keeping live attestations reachable. |
 | T8 | Replayed or duplicated attestations collide on uid. | The uid includes a per-issuer nonce, so repeated identical claims produce distinct uids and never overwrite one another. |
 | T9 | An attestation reports valid after expiry. | `is_valid` compares `expiration` against the current ledger timestamp and returns false once passed, and false for revoked entries. |
+| T10 | Malicious or buggy resolver causes unhandled reentrancy or silent failure. | Resolvers are invoked via standard `ResolverInterface`. If a resolver rejects or returns false, the transaction reverts with `ResolverRejected`. Soroban host enforces maximum call depth and gas limits. |
+| T11 | Forged delegated attestation signature spoofing issuer. | `attest_delegated` verifies Ed25519 signatures with `env.crypto().ed25519_verify` against the issuer's pre-configured signer key in `DataKey::Signer(issuer)`. |
+| T12 | Replay of delegated attestation signatures. | The signed payload binds the issuer's current monotonic nonce and a timestamp deadline. Nonce increments upon successful issuance, invalidating replayed signatures. Expired deadlines revert with `DeadlineExceeded`. |
+| T13 | Compromised off-chain delegated key continues issuing. | Issuers can revoke their signing key at any time via `clear_authorized_signer(issuer)`, immediately preventing any further delegated attestations from being submitted. |
 
 ## Out of scope for v0.1
 
-- **Delegated attestation and off-chain signature verification.** The PRD describes
-  `attest_delegated` and `verify_offchain`. They are not implemented here; when
-  added, ed25519 signature checking becomes a new sensitive surface and this
-  document must gain the corresponding threat entries.
-- **Resolver contracts.** The `resolver` field is stored but not yet invoked. When
-  resolvers are called on attest and revoke, reentrancy and gas-griefing by a
-  malicious resolver become in scope.
-- **Economic abuse.** Spam issuance is bounded per entry but not rate limited.
-  Rate limiting, if wanted, belongs in a resolver.
+- **Off-chain hash revocation.** The protocol supports on-chain revocation of attestations. Off-chain payload hash revocation is scheduled for subsequent hardening.
+- **Economic abuse.** Spam issuance is bounded per entry but not rate limited. Rate limiting, if wanted, belongs in a custom schema resolver.
 - **Mainnet.** The contracts are Testnet-only until the README states otherwise.
